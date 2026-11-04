@@ -171,7 +171,7 @@
 							if ((empty($v_user_theme) && (!empty($_SESSION['THEME']))) && ( $value == $_SESSION['THEME'] )) {
 								echo ' selected' ;
 							}
-							echo ">".$value."</option>\n";
+							echo ">".tohtml(theme_display_name($value))."</option>\n";
 						}
 					?>
 				</select>

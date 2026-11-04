@@ -16,9 +16,10 @@
 			<div class="top-bar">
 				<div class="container top-bar-inner">
 						<div class="top-bar-left">
-							<?php $logo_header = !empty($_SESSION['LOGO_HEADER']) ? $_SESSION['LOGO_HEADER'] : "/images/logo-header.svg"; ?>
 							<a href="/" class="top-bar-logo" title="<?= tohtml($_SESSION['APP_NAME']) ?>">
-								<img src="<?= tohtml($logo_header) ?>" alt="<?= tohtml($_SESSION['APP_NAME']) ?>" width="54" height="29">
+								<img class="logo-mark logo-mark--on-light" src="/images/vylaris/logo-mark-on-light.svg" alt="" width="36" height="24">
+								<img class="logo-mark logo-mark--on-dark" src="/images/vylaris/logo-mark-on-dark.svg" alt="" width="36" height="24">
+								<span class="top-bar-logo-text"><?= tohtml($_SESSION['APP_NAME']) ?></span>
 							</a>
 						</div>
 					<div class="top-bar-right">

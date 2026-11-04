@@ -178,3 +178,12 @@ function display_title($tab) {
 	$array2 = [$tab, get_hostname(), $_SERVER["REMOTE_ADDR"], $_SESSION["APP_NAME"]];
 	return str_replace($array1, $array2, $_SESSION["TITLE"]);
 }
+
+// Human readable names for the theme dropdowns; unknown (custom) themes keep their file name.
+function theme_display_name($theme) {
+	$names = [
+		"vylaris" => "Vylaris (Light)",
+		"vylaris-dark" => "Vylaris (Dark)",
+	];
+	return $names[$theme] ?? $theme;
+}

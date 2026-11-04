@@ -92,6 +92,20 @@ img {
 	vertical-align: middle;
 }
 
+/* Brand mark: both variants are emitted, the theme decides which one is shown */
+.logo-mark {
+	height: auto;
+	max-width: 100%;
+}
+
+.logo-mark--on-dark {
+	display: none;
+}
+
+.top-bar-logo-text {
+	margin-left: 10px;
+}
+
 table {
 	width: 100%;
 	border-collapse: collapse;

@@ -92,7 +92,7 @@
 						<select x-model="theme" class="form-select" name="v_theme" id="v_theme">
 							<?php foreach ($theme as $key => $value) { ?>
 								<option value="<?= tohtml($value) ?>">
-									<?= tohtml($value) ?>
+									<?= tohtml(theme_display_name($value)) ?>
 								</option>
 							<?php } ?>
 						</select>
