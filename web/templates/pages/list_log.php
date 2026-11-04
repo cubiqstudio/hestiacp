@@ -95,7 +95,7 @@
 						<?= tohtml($data[$key]["CATEGORY"]) ?>
 					</span>
 				</div>
-				<div class="units-table-cell">
+				<div class="units-table-cell u-text-break">
 					<span class="u-hide-desktop u-text-bold"><?= tohtml( _("Message")) ?>:</span>
 					<?= tohtml($data[$key]["MESSAGE"]) ?>
 				</div>

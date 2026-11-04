@@ -6,7 +6,7 @@
    ========================================================================== */
 
 .toolbar {
-	--unit-control-border: color-mix(in srgb, var(--vy-text-muted) 75%, var(--vy-surface));
+	--unit-control-border: var(--vy-field-border);
 	background-color: var(--vy-surface);
 	border-top: 1px solid var(--vy-border);
 	border-bottom: 1px solid var(--vy-border);
@@ -81,7 +81,7 @@
 		}
 
 		@media (--viewport-large) {
-			width: 14rem;
+			width: 11rem;
 		}
 	}
 
@@ -95,7 +95,7 @@
 		}
 
 		& .form-select {
-			max-width: 200px;
+			max-width: 14rem;
 		}
 	}
 }
@@ -104,6 +104,7 @@
 	padding: var(--vy-space-3) var(--vy-space-4);
 
 	@media (--viewport-large) {
+		gap: var(--vy-space-4);
 		padding: var(--vy-space-2) 0;
 	}
 }
@@ -111,6 +112,20 @@
 .toolbar-right {
 	& form {
 		min-width: 0;
+	}
+
+	/* Period filter (task monitor): one scrollable row of pills instead of a tall list */
+	&:has(> .toolbar-link) {
+		display: flex;
+		gap: var(--vy-space-1);
+		padding-block: 2px;
+		overflow-x: auto;
+		scrollbar-width: thin;
+	}
+
+	@media (--viewport-large) {
+		flex: none;
+		gap: var(--vy-space-3);
 	}
 }
 
@@ -131,6 +146,7 @@
 	color: var(--vy-text-muted);
 	font-size: inherit;
 	text-transform: none;
+	white-space: nowrap;
 	cursor: pointer;
 	border-radius: var(--vy-radius-sm);
 	transition: color var(--vy-transition);
@@ -168,6 +184,7 @@
 
 .toolbar-sorting-menu {
 	top: 40px;
+	right: 0;
 	min-width: 186px;
 	border: 1px solid var(--vy-border);
 	border-radius: var(--vy-radius-md);
@@ -184,7 +201,7 @@
 	}
 
 	& span {
-		min-height: 40px;
+		min-height: 44px;
 		transition:
 			color var(--vy-transition),
 			background-color var(--vy-transition);
@@ -196,6 +213,8 @@
 		}
 
 		&.up {
+			justify-content: center;
+			min-width: 44px;
 			padding: var(--vy-space-2) var(--vy-space-3);
 			border-left: 1px solid var(--vy-border);
 			color: var(--vy-text-muted);
@@ -225,6 +244,13 @@
 
 	@media (--viewport-small) {
 		top: calc(100% + var(--vy-space-1));
+		right: auto;
+	}
+
+	@media (--viewport-large) {
+		& span {
+			min-height: 40px;
+		}
 	}
 }
 
@@ -261,9 +287,14 @@
 }
 
 .toolbar-link {
+	display: flex;
+	flex: none;
+	align-items: center;
+	min-height: 44px;
 	color: var(--vy-text-muted);
 	text-transform: none;
 	font-weight: 500;
+	white-space: nowrap;
 	border-radius: var(--vy-radius-sm);
 	transition:
 		color var(--vy-transition),
@@ -281,9 +312,18 @@
 	&:active {
 		color: var(--vy-link-hover);
 	}
+
+	@media (--viewport-large) {
+		min-height: 36px;
+	}
 }
 
+/* Buttons wrap into as many columns as fit, so short labels pair up instead of stacking
+   (display: flex only applies from the medium viewport upwards in the upstream rules) */
 .toolbar-buttons {
+	display: flex;
+	flex-wrap: wrap;
+	gap: var(--vy-space-2);
 	padding-bottom: 0;
 
 	&:has(> *) {
@@ -291,17 +331,26 @@
 	}
 
 	& .button {
-		margin-bottom: var(--vy-space-2);
+		flex: 1 1 auto;
+		width: auto;
+		margin: 0;
+		white-space: nowrap;
+	}
+
+	& .inline-alert {
+		flex-basis: 100%;
+		margin: 0;
 	}
 
 	@media (--viewport-medium) {
 		& .button {
-			margin-bottom: 0;
-			margin-right: var(--vy-space-2);
+			flex: none;
 		}
 	}
 
 	@media (--viewport-large) {
+		flex: 1 1 0;
+		min-width: 0;
 		padding-bottom: 0;
 
 		&:has(> *) {
@@ -315,7 +364,6 @@
 
 	@media (--viewport-large) {
 		margin-top: 0;
-		margin-left: var(--vy-space-3);
 	}
 }
 
@@ -324,16 +372,21 @@
 
 .units-table {
 	font-size: 0.875rem;
-	font-variant-numeric: tabular-nums;
 	padding-left: var(--vy-space-4);
 	padding-right: var(--vy-space-4);
 
 	@media (--viewport-large) {
+		--unit-cell-px: var(--vy-space-3);
 		font-size: 0.8125rem;
 		border-collapse: separate;
 		margin-top: var(--vy-space-5);
 		padding-left: 0;
 		padding-right: 0;
+
+		/* Wide tables (nine columns or more) give up some padding to stay inside the page width */
+		&:has(> .units-table-header > :nth-child(9)) {
+			--unit-cell-px: var(--vy-space-2);
+		}
 	}
 }
 
@@ -344,7 +397,7 @@
 		box-shadow: none;
 
 		& .units-table-cell {
-			padding: 10px var(--vy-space-3);
+			padding: 10px var(--unit-cell-px);
 			font-size: 0.75rem;
 			font-weight: 600;
 			color: var(--vy-text-muted);
@@ -383,6 +436,12 @@
 
 .units-table-row {
 	--unit-bg: var(--vy-surface);
+	--unit-off-bg: var(--vy-surface-sunken);
+	--unit-off-text: var(--vy-text-muted);
+	--unit-off-style: dashed;
+	display: grid;
+	grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
+	gap: var(--vy-space-1) var(--vy-space-3);
 	padding: 14px var(--vy-space-4);
 	margin-top: var(--vy-space-3);
 	border-color: var(--vy-border);
@@ -404,6 +463,14 @@
 		margin-bottom: var(--vy-space-3);
 	}
 
+	/* Rows that start with the name (no checkbox or icon column) are package updates:
+	   an outdated package needs attention, it is not disabled */
+	&:has(> :first-child.units-table-heading-cell) {
+		--unit-off-bg: var(--vy-warning-subtle);
+		--unit-off-text: var(--vy-text);
+		--unit-off-style: solid;
+	}
+
 	&.focus {
 		--unit-bg: var(--vy-row-hover);
 		border-color: var(--vy-primary);
@@ -415,20 +482,20 @@
 		border-color: var(--vy-border-strong);
 	}
 
+	/* Suspended or disabled unit: every cell is muted, on a sunken tint */
 	&.disabled {
-		--unit-bg: var(--vy-bg);
-		color: var(--vy-text-muted);
-		border-style: dashed;
+		--unit-bg: var(--unit-off-bg);
+		color: var(--unit-off-text);
+		border-style: var(--unit-off-style);
 		border-color: var(--vy-border-strong);
 
 		&.selected {
 			--unit-bg: var(--vy-row-selected);
-			color: var(--vy-text-muted);
-			border-color: var(--vy-border-strong);
 		}
 	}
 
 	@media (--viewport-large) {
+		display: table-row;
 		padding: 0;
 		margin-top: 0;
 		border: 0;
@@ -474,17 +541,16 @@
 
 		&.disabled,
 		&.disabled:hover {
-			--unit-bg: var(--vy-bg);
+			--unit-bg: var(--unit-off-bg);
 
 			& > .units-table-cell {
-				border-bottom-style: dashed;
+				border-bottom-style: var(--unit-off-style);
 			}
 		}
 
 		&.disabled.selected,
 		&.disabled.selected:hover {
 			--unit-bg: var(--vy-row-selected);
-			color: var(--vy-text-muted);
 		}
 
 		&:hover .units-table-row-actions,
@@ -504,15 +570,25 @@
 	}
 }
 
+/* Cells (desktop: table cells, mobile: label above value in a two column card)
+   ========================================================================== */
+
 .units-table-cell {
 	padding-top: 2px;
 	padding-bottom: 2px;
-	overflow-wrap: anywhere;
+	overflow-wrap: break-word;
+
+	/* Checkbox, name and action cells use the full card width */
+	&:first-child,
+	&.units-table-heading-cell,
+	&:has(> .units-table-row-actions) {
+		grid-column: 1 / -1;
+	}
 
 	& label {
 		display: inline-flex;
 		align-items: center;
-		min-height: 32px;
+		min-height: 44px;
 		cursor: pointer;
 	}
 
@@ -536,9 +612,15 @@
 		font-style: normal;
 	}
 
+	&:not(.units-table-heading-cell, :first-child) > .u-hide-desktop:first-child {
+		display: block;
+		color: var(--vy-text-muted);
+		font-size: 0.75rem;
+		line-height: 1.3;
+	}
+
 	@media (--viewport-large) {
-		padding: 12px var(--vy-space-3);
-		white-space: nowrap;
+		padding: 12px var(--unit-cell-px);
 		background-color: var(--unit-bg);
 		border-bottom: 1px solid var(--vy-border);
 		transition: background-color var(--vy-transition);
@@ -554,18 +636,28 @@
 
 		.units-table-row > &:last-child {
 			min-width: 10ch;
-			white-space: normal;
 		}
 
 		&.compact {
 			padding-left: var(--vy-space-2);
 			padding-right: var(--vy-space-2);
+			white-space: nowrap;
 		}
 	}
 }
 
+/* "Off" / "not set" icons without a colour class of their own stay quiet, so only on (green) and
+   error (red) carry colour; zero specificity keeps every .icon-* class in charge */
+:where(
+	.units-table-cell .fa-circle-minus,
+	.units-table-cell .fa-ban,
+	.units-table-cell .icon-dark
+) {
+	color: var(--vy-field-border);
+}
+
 .units-table-row.disabled .units-table-cell a {
-	color: var(--vy-text-muted);
+	color: var(--unit-off-text);
 
 	&:hover {
 		color: var(--vy-link);
@@ -579,20 +671,105 @@
 	overflow-wrap: anywhere;
 
 	@media (--viewport-large) {
-		width: 40%;
-		min-width: 10rem;
-		max-width: 0;
-		padding: 12px var(--vy-space-4);
+		min-width: 6rem;
+		padding: 12px var(--unit-cell-px);
 		font-size: 0.8125rem;
-		overflow: hidden;
-		overflow-wrap: normal;
-		text-overflow: ellipsis;
-		white-space: nowrap;
 
 		& a {
 			color: var(--vy-text-heading);
 		}
+
+		/* The truncated second line (email) follows the name width instead of widening the column */
+		& .u-text-truncate {
+			contain: inline-size;
+		}
 	}
+}
+
+/* Row and select-all checkboxes: same look as .form-check-input, drawn without an image */
+.js-unit-checkbox,
+.js-toggle-all-checkbox {
+	--unit-check-size: 22px;
+	position: relative;
+	flex: none;
+	inline-size: var(--unit-check-size);
+	block-size: var(--unit-check-size);
+	margin: 0;
+	vertical-align: middle;
+	background-color: var(--vy-input-bg);
+	border: 1px solid var(--vy-field-border);
+	border-radius: var(--vy-radius-xs);
+	cursor: pointer;
+	appearance: none;
+	transition:
+		background-color var(--vy-transition),
+		border-color var(--vy-transition);
+
+	&::before {
+		content: "";
+		position: absolute;
+		inset-block-start: 2px;
+		inset-inline-start: 6px;
+		inline-size: 6px;
+		block-size: 11px;
+		border: solid var(--vy-text-on-primary);
+		border-width: 0 2px 2px 0;
+		opacity: 0;
+		transform: rotate(45deg);
+		transition: opacity var(--vy-transition);
+	}
+
+	&:hover {
+		border-color: var(--vy-field-border-hover);
+	}
+
+	&:checked,
+	&:indeterminate {
+		background-color: var(--vy-primary);
+		border-color: var(--vy-primary);
+
+		&::before {
+			opacity: 1;
+		}
+	}
+
+	&:indeterminate::before {
+		inset-block-start: 9px;
+		inset-inline-start: 4px;
+		inline-size: 12px;
+		block-size: 0;
+		border-width: 2px 0 0;
+		transform: none;
+	}
+
+	&:focus-visible {
+		outline: var(--vy-focus-width) solid var(--vy-focus-color);
+		outline-offset: var(--vy-focus-offset);
+	}
+
+	@media (--viewport-large) {
+		--unit-check-size: 18px;
+
+		&::before {
+			inset-block-start: 1px;
+			inset-inline-start: 5px;
+			inline-size: 5px;
+			block-size: 9px;
+		}
+
+		&:indeterminate::before {
+			inset-block-start: 7px;
+			inset-inline-start: 3px;
+			inline-size: 10px;
+		}
+	}
+}
+
+/* Mobile: checkbox and "Select" label form one 44px target */
+.units-table-cell > div:has(> .js-unit-checkbox) {
+	display: flex;
+	align-items: center;
+	gap: var(--vy-space-2);
 }
 
 .units-table-row-actions {
@@ -613,6 +790,11 @@
 
 .units-table-row-action {
 	margin: 0;
+
+	/* Move up / down links the template hides inline must not leave an empty flex item (and its gap) behind */
+	&:has(> [style*="display:none"]) {
+		display: none;
+	}
 
 	& .fas {
 		margin: 0 var(--vy-space-2) 0 var(--vy-space-3);
@@ -641,7 +823,7 @@
 
 .units-table-row-action-link {
 	min-height: 40px;
-	padding-right: var(--vy-space-3);
+	padding: var(--vy-space-2) var(--vy-space-3) var(--vy-space-2) 0;
 	color: var(--vy-text);
 	background-color: var(--vy-surface);
 	border: 1px solid var(--vy-border-strong);
@@ -658,7 +840,7 @@
 
 	@media (--viewport-large) {
 		min-height: 0;
-		padding-right: 0;
+		padding: 0;
 		background-color: transparent;
 		border: 0;
 
@@ -704,7 +886,27 @@
 	font-size: 0.8125rem;
 
 	@media (--viewport-large) {
-		padding-left: var(--vy-space-1);
-		padding-right: var(--vy-space-1);
+		padding: var(--vy-space-4) var(--vy-space-1) calc(var(--vy-space-7) + var(--vy-space-5));
+	}
+}
+
+/* Empty list: no column headers, one calm message (the toolbar button is the call to action) */
+.units-table:not(:has(.units-table-row)) {
+	& .units-table-header {
+		display: none;
+	}
+
+	& + .units-table-footer {
+		padding: var(--vy-space-7) var(--vy-space-4);
+		margin: var(--vy-space-4) var(--vy-space-4) 0;
+		font-size: 0.9375rem;
+		text-align: center;
+		background-color: var(--vy-surface);
+		border: 1px dashed var(--vy-border-strong);
+		border-radius: var(--vy-radius-md);
+
+		@media (--viewport-large) {
+			margin: var(--vy-space-4) 0 0;
+		}
 	}
 }

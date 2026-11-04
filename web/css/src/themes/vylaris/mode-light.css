@@ -48,6 +48,8 @@
 	--vy-topbar-border: #e3e8ef;
 	--vy-input-bg: #fff;
 	--vy-input-border: #cbd3df;
+	--vy-field-border: #7f8896;
+	--vy-field-border-hover: #525b69;
 	--vy-row-hover: #f3f7fd;
 	--vy-row-selected: #eaf2ff;
 	--vy-row-stripe: #fafbfd;

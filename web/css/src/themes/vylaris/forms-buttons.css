@@ -1,11 +1,6 @@
 /* Forms
    ========================================================================== */
 
-:root {
-	--vy-field-border: color-mix(in srgb, var(--vy-text-muted) 78%, var(--vy-surface));
-	--vy-field-border-hover: color-mix(in srgb, var(--vy-field-border) 55%, var(--vy-text));
-}
-
 .form-label {
 	display: inline-block;
 	margin-bottom: 6px;
@@ -18,10 +13,15 @@
 .form-check label {
 	display: inline-block;
 	min-height: 24px;
+	padding-block: 10px;
 	font-weight: 400;
 	line-height: 24px;
 	color: var(--vy-text);
 	cursor: pointer;
+
+	@media (--viewport-medium) {
+		padding-block: 0;
+	}
 }
 
 .form-control,
@@ -77,7 +77,23 @@
 }
 
 textarea.form-control {
+	min-height: 6.5rem;
 	line-height: 1.5;
+
+	@media (--viewport-medium) {
+		min-height: 8.5rem;
+	}
+}
+
+/* Certificates and keys: monospace, and tall enough to reach the closing -----END line */
+textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^="v_ssl_"]) {
+	font-family: var(--vy-font-mono);
+	font-size: 0.875rem !important;
+	min-height: 6.5rem !important;
+
+	@media (--viewport-medium) {
+		min-height: 8.5rem !important;
+	}
 }
 
 .form-control.highlighted {
@@ -141,22 +157,26 @@ textarea.form-control {
 	}
 }
 
+/* Inert fields get a fill that differs from both the page and an editable field in either mode */
+.form-control:disabled,
+.form-select:disabled,
+.form-control[readonly] {
+	background-color: color-mix(in srgb, var(--vy-text) 6%, var(--vy-surface));
+}
+
 .form-control:disabled,
 .form-select:disabled {
 	color: var(--vy-text-muted);
-	background-color: var(--vy-surface-sunken);
-	border-color: var(--vy-border);
+	border-color: var(--vy-border-strong);
 	text-shadow: none;
 	cursor: not-allowed;
 
 	&:hover {
-		border-color: var(--vy-border);
+		border-color: var(--vy-border-strong);
 	}
 }
 
 .form-control[readonly] {
-	background-color: var(--vy-surface-sunken);
-
 	&:focus {
 		border-color: var(--vy-focus-color);
 	}
@@ -199,11 +219,21 @@ textarea.form-control {
 	min-height: 24px;
 	margin-left: 0;
 	padding-inline-start: 28px;
+
+	@media (--viewport-medium) {
+		margin-bottom: var(--vy-space-1);
+	}
+
+	& + :is(.form-label, :has(> .form-label)) {
+		@media (--viewport-medium) {
+			margin-top: var(--vy-space-3);
+		}
+	}
 }
 
 .form-check-input {
 	position: absolute;
-	inset-block-start: 3px;
+	inset-block-start: 13px;
 	inset-inline-start: 0;
 	width: 18px;
 	height: 18px;
@@ -216,6 +246,10 @@ textarea.form-control {
 	transition:
 		background-color var(--vy-transition),
 		border-color var(--vy-transition);
+
+	@media (--viewport-medium) {
+		inset-block-start: 3px;
+	}
 
 	&::before {
 		content: "";
@@ -311,6 +345,24 @@ textarea.form-control {
 	&:focus-visible {
 		outline: var(--vy-focus-width) solid var(--vy-focus-color);
 		outline-offset: 0;
+	}
+}
+
+/* Small inline controls (generate password, help icon, text links) get a touch hit area
+   beyond their visible box, without moving the layout */
+.form-link,
+.form-label .u-unstyled-button,
+.form-label a:has(> .fas) {
+	position: relative;
+
+	&::after {
+		content: "";
+		position: absolute;
+		inset: -8px;
+
+		@media (--viewport-medium) {
+			display: none;
+		}
 	}
 }
 
@@ -546,21 +598,25 @@ textarea.form-control {
 	}
 }
 
+/* The status red doubles as a text colour on dark surfaces and is too light to carry white text there,
+   so the fill is the same hue capped at a lightness that holds 4.5:1 in both modes */
 .button-danger {
-	color: var(--vy-surface);
-	background: var(--vy-danger);
-	border-color: var(--vy-danger);
+	--vy-button-danger: oklch(from var(--vy-danger) min(l, 0.5) c h);
+
+	color: var(--vy-text-on-primary);
+	background: var(--vy-button-danger);
+	border-color: var(--vy-button-danger);
 
 	&:hover {
-		color: var(--vy-surface);
-		background: color-mix(in srgb, var(--vy-danger) 86%, var(--vy-text));
-		border-color: color-mix(in srgb, var(--vy-danger) 86%, var(--vy-text));
+		color: var(--vy-text-on-primary);
+		background: oklch(from var(--vy-button-danger) calc(l - 0.04) c h);
+		border-color: oklch(from var(--vy-button-danger) calc(l - 0.04) c h);
 	}
 
 	&:active {
-		color: var(--vy-surface);
-		background: color-mix(in srgb, var(--vy-danger) 72%, var(--vy-text));
-		border-color: color-mix(in srgb, var(--vy-danger) 72%, var(--vy-text));
+		color: var(--vy-text-on-primary);
+		background: oklch(from var(--vy-button-danger) calc(l - 0.08) c h);
+		border-color: oklch(from var(--vy-button-danger) calc(l - 0.08) c h);
 	}
 
 	&.button-secondary {
@@ -621,6 +677,8 @@ textarea.form-control {
 
 .clipboard {
 	& .clipboard-input {
+		padding-inline: 10px 6px;
+		font-size: 0.8125rem;
 		cursor: default;
 		border-color: var(--vy-field-border);
 		border-start-end-radius: 0;
@@ -676,12 +734,10 @@ textarea.form-control {
 }
 
 .tabs-items {
-	flex-wrap: nowrap;
-	gap: 4px;
+	flex-wrap: wrap;
+	gap: 0 4px;
 	padding-inline: 12px;
-	overflow-x: auto;
 	border-bottom: 1px solid var(--vy-border);
-	scrollbar-width: thin;
 }
 
 .tabs-item {

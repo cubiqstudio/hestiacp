@@ -189,10 +189,21 @@ pre {
 	}
 }
 
+/* Wraps instead of scrolling: single-line command output must never be clipped */
 .console-output {
+	padding: var(--vy-space-4);
 	color: var(--vy-text);
-	font-size: 0.9375rem;
-	line-height: 1.4;
+	font-size: 0.875rem;
+	line-height: 1.5;
+	white-space: pre-wrap;
+	overflow-wrap: anywhere;
+	background-color: var(--vy-surface-sunken);
+	border: 1px solid var(--vy-border);
+	border-radius: var(--vy-radius-md);
+}
+
+.logs-container {
+	padding-inline: var(--vy-space-4);
 }
 
 /* Tables
@@ -262,6 +273,30 @@ th {
 
 .app-content {
 	padding-bottom: var(--vy-space-6);
+}
+
+/* Page gutter: 16px on small viewports, same as toolbar, buttons and unit cards
+   ========================================================================== */
+
+.form-container {
+	padding: var(--vy-space-6) var(--vy-space-4);
+}
+
+.stats {
+	padding-inline: var(--vy-space-4);
+
+	@media (--viewport-large) {
+		padding-inline: 0;
+	}
+}
+
+/* Icon accents: toolbar buttons and form actions use the link colour, not the rainbow of the utility classes
+   Destructive buttons (.button-danger) keep their red, status icons live outside these contexts
+   ========================================================================== */
+
+.toolbar .button-secondary:not(.button-danger) .fas:not(.icon-dim, .icon-highlight),
+.form-label .u-unstyled-button .fas {
+	color: var(--vy-link);
 }
 
 /* App footer

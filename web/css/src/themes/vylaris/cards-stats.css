@@ -14,12 +14,27 @@
 		& .card-content {
 			color: var(--vy-text-muted);
 		}
+
+		& .card-thumb {
+			filter: none;
+			opacity: 1;
+		}
+
+		& .card-thumb img {
+			filter: grayscale(100%);
+			opacity: 0.4;
+		}
 	}
 }
 
+/* Logo chip: raised surface inset from the card edge, so it follows the mode instead of
+   being a white slab in dark */
 .card-thumb {
-	background-color: color-mix(in srgb, var(--vy-text-on-primary) 94%, var(--vy-surface-sunken));
-	border-bottom: 1px solid var(--vy-border);
+	height: 160px;
+	margin: var(--vy-space-3) var(--vy-space-3) 0;
+	background-color: var(--vy-surface-raised);
+	border: 1px solid var(--vy-border);
+	border-radius: var(--vy-radius-sm);
 }
 
 .card-content {
@@ -54,6 +69,9 @@
 	}
 
 	@media (--viewport-large) {
+		display: grid;
+		grid-template-columns: 12rem minmax(0, 1fr);
+		column-gap: var(--vy-space-6);
 		padding: var(--vy-space-5);
 
 		&:hover {
@@ -69,7 +87,8 @@
 
 	@media (--viewport-large) {
 		padding-left: 0;
-		margin-right: var(--vy-space-6);
+		margin-right: 0;
+		margin-bottom: 0;
 	}
 }
 
@@ -102,16 +121,22 @@
 
 .stats-item-summary-title {
 	flex-wrap: wrap;
-	align-items: baseline;
-	gap: var(--vy-space-1) var(--vy-space-3);
-	margin-bottom: var(--vy-space-2);
-	padding-bottom: var(--vy-space-2);
+	align-items: center;
+	gap: 0 var(--vy-space-3);
+	min-height: 2.5rem;
+	margin-bottom: 0;
+	padding-bottom: 0;
 	color: var(--vy-text-heading);
 	font-size: 0.875rem;
 	border-bottom: 1px solid var(--vy-border-strong);
 
 	& > span {
 		white-space: nowrap;
+	}
+
+	/* The template offsets the value with a margin utility, which is !important */
+	& > .u-mr10 {
+		margin-right: 0 !important;
 	}
 
 	& .fas {
@@ -122,12 +147,33 @@
 
 .stats-item-summary-list {
 	color: var(--vy-text-muted);
-	font-size: 0.8125rem;
+	font-size: 0.875rem;
+
+	/* The template spaces the blocks with margin utilities, which are !important */
+	margin-bottom: var(--vy-space-4) !important;
+
+	&:last-child {
+		margin-bottom: 0 !important;
+	}
+}
+
+/* Summary rows and counter rows share one height and one separator */
+.stats-item-summary-list-item,
+.stats-item-list-item {
+	align-items: center;
+	gap: var(--vy-space-3);
+	min-height: 2.5rem;
+	padding-top: 0;
+	padding-bottom: 0;
+	border-bottom: 1px solid var(--vy-border);
 }
 
 .stats-item-summary-list-item {
-	padding-top: var(--vy-space-1);
-	padding-bottom: var(--vy-space-1);
+	margin-bottom: 0 !important;
+
+	&:last-child {
+		border-bottom: 0;
+	}
 
 	& .u-text-bold {
 		color: var(--vy-text);
@@ -135,38 +181,19 @@
 }
 
 .stats-item-list {
+	display: grid;
+	grid-template-columns: repeat(2, minmax(0, 1fr));
+	gap: 0 var(--vy-space-5);
+	margin-top: var(--vy-space-4);
 	font-size: 0.875rem;
 
-	@media (--viewport-small) {
-		gap: 0 var(--vy-space-6);
-	}
-
 	@media (--viewport-medium) {
-		font-size: 0.875rem;
-		row-gap: 0;
+		margin-top: 0;
 	}
 }
 
-.stats-item-list-item {
-	align-items: baseline;
-	gap: var(--vy-space-3);
-	padding-top: var(--vy-space-2);
-	padding-bottom: var(--vy-space-2);
-	border-bottom: 1px solid var(--vy-border);
-
-	&:last-child {
-		border-bottom: 0;
-	}
-
-	@media (--viewport-small) {
-		&:last-child {
-			border-bottom: 1px solid var(--vy-border);
-		}
-
-		&:nth-last-child(-n + 2) {
-			border-bottom: 0;
-		}
-	}
+.stats-item-list-item:nth-last-child(-n + 2) {
+	border-bottom: 0;
 }
 
 .stats-item-list-item-label {

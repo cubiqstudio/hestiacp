@@ -36,6 +36,9 @@
 	--vy-space-6: 32px;
 	--vy-space-7: 48px;
 
+	/* Layout */
+	--vy-topbar-height: 56px;
+
 	/* Motion */
 	--vy-transition: 150ms ease;
 

@@ -1,0 +1,25 @@
+/*
+    VylarisSpace - cross-cutting overrides
+    Loaded last. Tokens only, no hard-coded colours.
+*/
+
+/* Long free text (log messages, paths, URLs) must wrap instead of widening the table
+   ========================================================================== */
+
+.units-table-cell {
+	min-width: 0;
+}
+
+.units-table-cell.u-text-break,
+.u-text-break {
+	overflow-wrap: anywhere;
+	word-break: break-word;
+}
+
+/* Disabled checkboxes and radios: the browser default (GrayText) is not part of the palette
+   ========================================================================== */
+
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled {
+	color: var(--vy-text-muted);
+}

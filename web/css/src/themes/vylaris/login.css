@@ -40,14 +40,14 @@
 	border: 1px solid var(--vy-border);
 	border-radius: var(--vy-radius-lg);
 	box-shadow: var(--vy-shadow-md);
+	overflow: hidden;
 
 	&::before {
 		content: "";
 		position: absolute;
-		inset: -1px -1px auto;
+		inset: 0 0 auto;
 		height: 3px;
 		background: var(--vy-brand-gradient);
-		border-radius: var(--vy-radius-lg) var(--vy-radius-lg) 0 0;
 	}
 
 	@media (--viewport-small) {
@@ -132,6 +132,8 @@
 	text-transform: none;
 	color: var(--vy-link);
 	border-radius: var(--vy-radius-xs);
+	padding-block: 10px;
+	margin-block: -10px;
 
 	&:hover {
 		color: var(--vy-link-hover);
@@ -146,7 +148,7 @@
 	display: flex;
 	align-items: flex-start;
 	gap: var(--vy-space-2);
-	margin: 0 0 var(--vy-space-4);
+	margin: 0 0 var(--vy-space-4) !important; /* beats .u-mb10 on the reset hint */
 	padding: var(--vy-space-3);
 	font-weight: 500;
 	line-height: 1.5;
