@@ -15,8 +15,8 @@
 
 	/* Typography */
 	--vy-font-sans:
-		"Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", roboto, "Helvetica Neue", arial,
-		sans-serif;
+		"Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", roboto, "Helvetica Neue",
+		arial, sans-serif;
 	--vy-font-display: "Exo", var(--vy-font-sans);
 	--vy-font-mono: "Inconsolata", ui-monospace, "SFMono-Regular", menlo, consolas, monospace;
 

@@ -143,3 +143,11 @@ node test/vylaris-preview/audit.mjs --css /tmp/css --themes vylaris,vylaris-dark
 ```
 
 The JSON file and a markdown summary (`audit.md`) are written next to `--out`. Use `--find-rule` to locate the stylesheet rule behind a reported element, and `--help` for all options. Only the default state of each page is audited (no hover or visited states), and images or blend modes are not modelled in the contrast check.
+
+## Working on one partial in isolation
+
+```bash
+node test/vylaris-preview/build-css.mjs /tmp/css --isolate topbar-menu
+```
+
+Builds the themes from a private copy of `web/css/src` in which every `web/css/src/themes/vylaris/*.css` partial except the named ones is reset to its last committed version. Several people can then edit different partials at the same time without a half-written file breaking the others' builds.
