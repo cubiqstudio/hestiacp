@@ -19,13 +19,13 @@
 				</button>
 				<ul class="toolbar-sorting-menu js-sorting-menu u-hidden">
 					<li data-entity="sort-date" data-sort-as-int="1">
-						<span class="name <?php if ($_SESSION['userSortOrder'] === 'date') { echo 'active'; } ?>"><?= tohtml( _("Date")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name <?php if ($_SESSION['userSortOrder'] === 'date') { echo 'active'; } ?>"><?= tohtml( _("Date")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Date"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-key">
-						<span class="name"><?= tohtml( _("Access Key")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Access Key")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Access Key"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-comment">
-						<span class="name"><?= tohtml( _("Comment")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Comment")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Comment"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 				</ul>
 				<form x-data x-bind="BulkEdit" action="/bulk/access-key/" method="post">
@@ -93,6 +93,7 @@
 								class="units-table-row-action-link data-controls js-confirm-action"
 								href="/delete/access-key/?<?= tohtml(http_build_query(["key" => $key, "token" => $_SESSION["token"]])) ?>"
 								title="<?= tohtml( _("Delete")) ?>"
+								data-confirm-variant="danger"
 								data-confirm-title="<?= tohtml( _("Delete")) ?>"
 								data-confirm-message="<?= tohtml(sprintf(_("Are you sure you want to delete access key %s?"), $key)) ?>"
 							>

@@ -8,9 +8,10 @@ export default function handleConfirmAction() {
 
 			const title = triggerLink.dataset.confirmTitle;
 			const message = triggerLink.dataset.confirmMessage;
+			const variant = triggerLink.dataset.confirmVariant;
 			const targetUrl = triggerLink.getAttribute('href');
 
-			createConfirmationDialog({ title, message, targetUrl, spinner: true });
+			createConfirmationDialog({ title, message, targetUrl, spinner: true, variant });
 		});
 	});
 }

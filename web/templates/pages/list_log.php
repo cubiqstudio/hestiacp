@@ -30,6 +30,7 @@
 					<a
 						class="button button-secondary button-danger data-controls js-confirm-action"
 						href="/delete/log/?<?= tohtml(http_build_query(["token" => $_SESSION["token"]])) ?>"
+						data-confirm-variant="danger"
 						data-confirm-title="<?= tohtml( _("Delete")) ?>"
 						data-confirm-message="<?= tohtml( _("Are you sure you want to delete the logs?")) ?>"
 					>

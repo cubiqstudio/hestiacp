@@ -14,17 +14,33 @@
 	overflow: hidden;
 	color: var(--vy-text);
 	background-color: var(--vy-surface-raised);
-	border: 1px solid var(--vy-border);
+	border: 1px solid var(--vy-border-strong);
 	border-radius: var(--vy-radius-lg);
 	box-shadow: var(--vy-shadow-lg);
-
-	&::backdrop {
-		background-color: var(--vy-overlay);
-	}
 
 	&:focus-visible {
 		outline: var(--vy-focus-width) solid var(--vy-focus-color);
 		outline-offset: calc(var(--vy-focus-offset) * -2);
+	}
+
+	/* A destructive confirmation carries a thin danger accent along the top edge */
+	&:has(.button-danger)::before {
+		content: "";
+		position: absolute;
+		inset: 0 0 auto;
+		height: 3px;
+		background-color: var(--vy-danger-solid);
+	}
+}
+
+/* The backdrop is a notch stronger than the plain overlay so a dark dialog still lifts off a dark page;
+   the blur is only added where the browser supports it */
+.modal::backdrop,
+.shortcuts::backdrop {
+	background-color: color-mix(in srgb, var(--vy-overlay), black 15%);
+
+	@supports (backdrop-filter: blur(1px)) {
+		backdrop-filter: blur(2px);
 	}
 }
 
@@ -44,6 +60,11 @@
 .modal-title {
 	margin: 0;
 	padding: var(--vy-space-5) var(--vy-space-5) 0;
+
+	/* An empty title would still reserve its padding above the message */
+	&:empty {
+		display: none;
+	}
 }
 
 .modal-message {
@@ -82,6 +103,10 @@
 			flex: 0 0 auto;
 		}
 	}
+
+	& .button-danger:focus-visible {
+		outline-color: var(--vy-danger-solid);
+	}
 }
 
 /* Shortcuts panel
@@ -91,13 +116,9 @@
 	max-width: calc(100vw - var(--vy-space-5) - var(--vy-space-3));
 	color: var(--vy-text);
 	background-color: var(--vy-surface-raised);
-	border: 1px solid var(--vy-border);
+	border: 1px solid var(--vy-border-strong);
 	border-radius: var(--vy-radius-lg);
 	box-shadow: var(--vy-shadow-lg);
-
-	&::backdrop {
-		background-color: var(--vy-overlay);
-	}
 
 	&:focus-visible {
 		outline: var(--vy-focus-width) solid var(--vy-focus-color);
@@ -207,11 +228,6 @@
 	border-color: var(--vy-border-strong);
 	border-radius: var(--vy-radius-sm);
 	box-shadow: none;
-}
-
-.console-output {
-	color: var(--vy-text);
-	line-height: 1.5;
 }
 
 /* Icon component

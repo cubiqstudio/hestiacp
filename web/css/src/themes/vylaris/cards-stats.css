@@ -54,8 +54,11 @@
 .stats {
 	display: grid;
 	gap: var(--vy-space-4);
-	padding-top: var(--vy-space-5);
-	padding-bottom: var(--vy-space-5);
+	padding: var(--vy-space-5) var(--vy-space-4);
+
+	@media (--viewport-large) {
+		padding-inline: 0;
+	}
 }
 
 .stats-item {
@@ -168,6 +171,7 @@
 	border-bottom: 1px solid var(--vy-border);
 }
 
+/* Beats the !important margin utility the template puts on these items */
 .stats-item-summary-list-item {
 	margin-bottom: 0 !important;
 
@@ -234,9 +238,39 @@
 
 .web-terminal {
 	overflow-x: auto;
-	border: 1px solid var(--vy-border-strong);
+	padding: var(--vy-space-3);
+	background-color: var(--vy-surface-sunken);
+	border: 1px solid var(--vy-border);
 	border-radius: var(--vy-radius-md);
-	box-shadow: var(--vy-shadow-md);
+	scrollbar-width: thin;
+	scrollbar-color: var(--vy-border-strong) transparent;
+
+	/* xterm.css paints its viewport and composition layer #000, the theme colours come from the JS */
+	& .xterm-viewport,
+	& .xterm .composition-view {
+		background-color: var(--vy-surface-sunken);
+		scrollbar-width: thin;
+		scrollbar-color: var(--vy-border-strong) transparent;
+	}
+
+	& .xterm .composition-view {
+		color: var(--vy-text);
+	}
+
+	/* xterm.js sets this background as an inline style (black until its theme is applied) */
+	& .xterm-scrollable-element {
+		background-color: var(--vy-surface-sunken) !important;
+	}
+
+	& .xterm .xterm-scrollable-element > .scrollbar > .slider {
+		background-color: var(--vy-border-strong);
+		border-radius: var(--vy-radius-pill);
+	}
+
+	& .xterm .xterm-scrollable-element > .scrollbar > .slider:hover,
+	& .xterm .xterm-scrollable-element > .scrollbar > .slider.active {
+		background-color: var(--vy-text-muted);
+	}
 }
 
 /* Values List component
@@ -263,7 +297,7 @@
    ========================================================================== */
 
 .server-summary {
-	margin: var(--vy-space-5) 20px;
+	margin: var(--vy-space-5) var(--vy-space-4);
 	padding: var(--vy-space-5);
 	background-color: var(--vy-surface);
 	border: 1px solid var(--vy-border);

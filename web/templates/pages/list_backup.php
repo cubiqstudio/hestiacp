@@ -118,6 +118,7 @@
 										class="units-table-row-action-link data-controls js-confirm-action"
 										href="/delete/backup/?<?= tohtml(http_build_query(["backup" => $key, "token" => $_SESSION["token"]])) ?>"
 										title="<?= tohtml( _("Delete")) ?>"
+										data-confirm-variant="danger"
 										data-confirm-title="<?= tohtml( _("Delete")) ?>"
 										data-confirm-message="<?= tohtml(sprintf(_("Are you sure you want to delete backup %s?"), $key)) ?>"
 									>

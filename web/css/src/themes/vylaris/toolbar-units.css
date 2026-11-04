@@ -114,13 +114,12 @@
 		min-width: 0;
 	}
 
-	/* Period filter (task monitor): one scrollable row of pills instead of a tall list */
+	/* Period filter (task monitor): a wrapping row of pills instead of a tall list */
 	&:has(> .toolbar-link) {
 		display: flex;
+		flex-wrap: wrap;
 		gap: var(--vy-space-1);
 		padding-block: 2px;
-		overflow-x: auto;
-		scrollbar-width: thin;
 	}
 
 	@media (--viewport-large) {
@@ -353,6 +352,11 @@
 		min-width: 0;
 		padding-bottom: 0;
 
+		/* The group after the first one (Save, secondary actions) sits at the right edge */
+		&:not(:first-child) {
+			justify-content: flex-end;
+		}
+
 		&:has(> *) {
 			padding-bottom: 0;
 		}
@@ -438,7 +442,6 @@
 	--unit-bg: var(--vy-surface);
 	--unit-off-bg: var(--vy-surface-sunken);
 	--unit-off-text: var(--vy-text-muted);
-	--unit-off-style: dashed;
 	display: grid;
 	grid-template-columns: repeat(auto-fill, minmax(8.5rem, 1fr));
 	gap: var(--vy-space-1) var(--vy-space-3);
@@ -468,7 +471,6 @@
 	&:has(> :first-child.units-table-heading-cell) {
 		--unit-off-bg: var(--vy-warning-subtle);
 		--unit-off-text: var(--vy-text);
-		--unit-off-style: solid;
 	}
 
 	&.focus {
@@ -486,7 +488,6 @@
 	&.disabled {
 		--unit-bg: var(--unit-off-bg);
 		color: var(--unit-off-text);
-		border-style: var(--unit-off-style);
 		border-color: var(--vy-border-strong);
 
 		&.selected {
@@ -542,10 +543,6 @@
 		&.disabled,
 		&.disabled:hover {
 			--unit-bg: var(--unit-off-bg);
-
-			& > .units-table-cell {
-				border-bottom-style: var(--unit-off-style);
-			}
 		}
 
 		&.disabled.selected,
@@ -583,6 +580,22 @@
 	&.units-table-heading-cell,
 	&:has(> .units-table-row-actions) {
 		grid-column: 1 / -1;
+	}
+
+	/* Card: the select checkbox sits at the top right, level with the name, instead of a row of its own */
+	&:first-child:has(> div > .js-unit-checkbox) {
+		grid-row: 1;
+		justify-self: end;
+
+		& + .units-table-heading-cell {
+			grid-row: 1;
+			align-self: center;
+			padding-inline-end: 6.5rem;
+
+			@media (--viewport-large) {
+				padding-inline-end: var(--unit-cell-px);
+			}
+		}
 	}
 
 	& label {
@@ -638,6 +651,11 @@
 			min-width: 10ch;
 		}
 
+		/* A value stays on one line with its unit (12.00 mb), free text cells keep wrapping */
+		&.u-text-center-desktop:has(.u-text-small) {
+			white-space: nowrap;
+		}
+
 		&.compact {
 			padding-left: var(--vy-space-2);
 			padding-right: var(--vy-space-2);
@@ -670,6 +688,11 @@
 	font-size: 0.9375rem;
 	overflow-wrap: anywhere;
 
+	/* Status icon and its word (ACCEPT) never separate */
+	& a:has(> :is(.fa-circle-check, .fa-circle-minus)) {
+		white-space: nowrap;
+	}
+
 	@media (--viewport-large) {
 		min-width: 6rem;
 		padding: 12px var(--unit-cell-px);
@@ -679,9 +702,15 @@
 			color: var(--vy-text-heading);
 		}
 
-		/* The truncated second line (email) follows the name width instead of widening the column */
+		/* The truncated second line (email) follows the name width instead of widening the column;
+		   where the column has room it may use more than the template's 200px
+		   (overrides upstream .u-max-width200 { max-width: 200px !important }) */
 		& .u-text-truncate {
 			contain: inline-size;
+
+			&.u-max-width200 {
+				max-width: 18rem !important;
+			}
 		}
 	}
 }
@@ -773,8 +802,9 @@
 }
 
 .units-table-row-actions {
+	--unit-action-color: var(--vy-text-muted);
 	gap: var(--vy-space-2);
-	padding-top: var(--vy-space-2);
+	padding-top: var(--vy-space-1);
 
 	@media (--viewport-large) {
 		gap: 0;
@@ -796,14 +826,13 @@
 		display: none;
 	}
 
+	/* One calm icon colour for every action: the per-action colour classes of the template are ignored */
 	& .fas {
 		margin: 0 var(--vy-space-2) 0 var(--vy-space-3);
 		padding: 0;
 		font-size: 0.875rem;
-	}
-
-	& .icon-highlight {
-		color: var(--vy-text);
+		color: var(--unit-action-color);
+		transition: color var(--vy-transition);
 	}
 
 	@media (--viewport-large) {
@@ -815,8 +844,6 @@
 			block-size: 30px;
 			margin: 0;
 			padding: 0;
-			color: var(--unit-action-color);
-			transition: color var(--vy-transition);
 		}
 	}
 }
@@ -838,6 +865,16 @@
 		border-color: var(--vy-link);
 	}
 
+	&:hover .fas,
+	&:focus-visible .fas {
+		color: var(--vy-link);
+	}
+
+	/* Only the destructive action turns red */
+	&[href*="/delete/"]:is(:hover, :focus-visible) .fas {
+		color: var(--vy-danger);
+	}
+
 	@media (--viewport-large) {
 		min-height: 0;
 		padding: 0;
@@ -846,18 +883,6 @@
 
 		&:hover {
 			background-color: color-mix(in srgb, var(--vy-primary) 12%, transparent);
-
-			& .fas {
-				color: var(--vy-link);
-			}
-
-			& .icon-red {
-				color: var(--vy-danger);
-			}
-
-			& .icon-green {
-				color: var(--vy-success);
-			}
 		}
 	}
 }

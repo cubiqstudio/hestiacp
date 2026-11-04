@@ -5,7 +5,7 @@ export default async function initWebTerminal() {
 	}
 
 	const Terminal = await loadXterm();
-	const terminal = new Terminal();
+	const terminal = new Terminal({ theme: getTerminalTheme(container) });
 	let Addon = null;
 	if (typeof WebGL2RenderingContext !== 'undefined') {
 		Addon = await loadWebGLAddon();
@@ -32,6 +32,44 @@ export default async function initWebTerminal() {
 			terminal.writeln(evt.reason ?? 'Connection closed.');
 		}
 	});
+}
+
+// Maps xterm theme options to the CSS custom properties that supply them
+const terminalThemeVariables = {
+	background: '--vy-surface-sunken',
+	foreground: '--vy-text',
+	cursor: '--vy-text',
+	selectionBackground: '--vy-selection',
+	black: '--vy-text-muted',
+	red: '--vy-danger',
+	green: '--vy-success',
+	yellow: '--vy-warning',
+	blue: '--vy-info',
+	magenta: '--vy-icon-purple',
+	cyan: '--vy-icon-teal',
+	white: '--vy-text',
+	brightBlack: '--vy-text-muted',
+	brightRed: '--vy-danger',
+	brightGreen: '--vy-success',
+	brightYellow: '--vy-warning',
+	brightBlue: '--vy-info',
+	brightMagenta: '--vy-icon-purple',
+	brightCyan: '--vy-icon-teal',
+	brightWhite: '--vy-text',
+};
+
+// Builds the xterm theme from the theme's CSS variables. Variables that are not defined
+// (themes without them) are skipped, so xterm keeps its default colours for those entries.
+function getTerminalTheme(container) {
+	const styles = getComputedStyle(container);
+	const theme = {};
+	for (const [option, variable] of Object.entries(terminalThemeVariables)) {
+		const value = styles.getPropertyValue(variable).trim();
+		if (value) {
+			theme[option] = value;
+		}
+	}
+	return theme;
 }
 
 /** @returns {Promise<typeof import("@xterm/xterm").Terminal>} */

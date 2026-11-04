@@ -24,6 +24,13 @@
 
 .top-bar-inner {
 	align-items: center;
+
+	/* Same 16px page gutter as toolbar, buttons and cards; the container takes over from the large breakpoint */
+	padding-inline: var(--vy-space-4);
+
+	@media (--viewport-large) {
+		padding-inline: 0;
+	}
 }
 
 .top-bar-left {
@@ -342,6 +349,7 @@
 }
 
 .top-bar-notification-delete {
+	position: relative;
 	flex: none;
 	width: 28px;
 	height: 28px;
@@ -371,6 +379,17 @@
 		outline: var(--vy-focus-width) solid var(--vy-focus-color);
 		outline-offset: 0;
 	}
+
+	/* Invisible hit area: 44px square by default (touch), 32px with a fine pointer on wider screens */
+	&::after {
+		content: "";
+		position: absolute;
+		inset: -8px;
+
+		@media (--viewport-small) and (pointer: fine) {
+			inset: -2px;
+		}
+	}
 }
 
 .top-bar-notifications-delete-all {
@@ -387,15 +406,15 @@
 		color var(--vy-transition),
 		background-color var(--vy-transition);
 
-	/* Fade of the list above the pinned button: more entries are hidden below the fold */
+	/* Fade of the list above the pinned button: a row cut off by it reads as "scroll for more" */
 	&::before {
 		content: "";
 		position: absolute;
 		right: 0;
 		bottom: 100%;
 		left: 0;
-		height: var(--vy-space-4);
-		background: linear-gradient(to top, var(--vy-surface-raised), transparent);
+		height: var(--vy-space-6);
+		background: linear-gradient(to top, var(--vy-surface-raised) 15%, transparent);
 		pointer-events: none;
 	}
 

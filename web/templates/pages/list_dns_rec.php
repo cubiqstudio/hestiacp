@@ -25,19 +25,19 @@
 				</button>
 				<ul class="toolbar-sorting-menu js-sorting-menu u-hidden">
 					<li data-entity="sort-date" data-sort-as-int="1">
-						<span class="name <?php if ($_SESSION['userSortOrder'] === 'date') { echo 'active'; } ?>"><?= tohtml( _("Date")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name <?php if ($_SESSION['userSortOrder'] === 'date') { echo 'active'; } ?>"><?= tohtml( _("Date")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Date"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-value">
-						<span class="name"><?= tohtml( _("IP or Value")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("IP or Value")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("IP or Value"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-record">
-						<span class="name"><?= tohtml( _("Record")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Record")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Record"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-ttl" data-sort-as-int="1">
-						<span class="name"><?= tohtml( _("TTL")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("TTL")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("TTL"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-type">
-						<span class="name"><?= tohtml( _("Type")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Type")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Type"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 				</ul>
 				<?php if ($read_only !== true) { ?>
@@ -140,6 +140,7 @@
 										class="units-table-row-action-link data-controls js-confirm-action"
 										href="/delete/dns/?<?= tohtml(http_build_query(array("domain" => $_GET["domain"], "record_id" => $data[$key]["ID"], "token" => $_SESSION["token"]))) ?>"
 										title="<?= tohtml( _("Delete")) ?>"
+										data-confirm-variant="danger"
 										data-confirm-title="<?= tohtml( _("Delete")) ?>"
 										data-confirm-message="<?= tohtml(sprintf(_("Are you sure you want to delete record %s?"), $key)) ?>"
 									>

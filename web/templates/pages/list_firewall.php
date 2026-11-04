@@ -30,16 +30,16 @@
 						<span class="name"><?= tohtml(_("Action")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up active"><i class="fas fa-arrow-up-a-z"></i></span>
 					</li>
 					<li data-entity="sort-protocol">
-						<span class="name"><?= tohtml(_("Protocol")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml(_("Protocol")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Protocol"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-port">
-						<span class="name"><?= tohtml(_("Port")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml(_("Port")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Port"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-ip" data-sort-as-int="1">
-						<span class="name"><?= tohtml(_("IP Address")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml(_("IP Address")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("IP Address"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-comment">
-						<span class="name"><?= tohtml(_("Comment")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml(_("Comment")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Comment"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 				</ul>
 				<form x-data x-bind="BulkEdit" action="/bulk/firewall/" method="post">
@@ -197,6 +197,7 @@
 								class="units-table-row-action-link data-controls js-confirm-action"
 								href="/delete/firewall/?<?= tohtml(http_build_query(["rule" => $key, "token" => $_SESSION["token"]])) ?>"
 								title="<?= tohtml(_("Delete")) ?>"
+								data-confirm-variant="danger"
 								data-confirm-title="<?= tohtml(_("Delete")) ?>"
 								data-confirm-message="<?= tohtml(sprintf(_("Are you sure you want to delete rule #%s?"), $key)) ?>"
 							>

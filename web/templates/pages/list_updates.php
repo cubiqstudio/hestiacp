@@ -49,7 +49,7 @@
 					$upd_status = 'outdated';
 				}
 			?>
-			<div class="units-table-row <?php if ($status == 'suspended') echo 'disabled'; ?> js-unit">
+			<div class="units-table-row <?php if ($status == 'suspended') echo 'disabled units-table-row-outdated'; ?> js-unit">
 				<div class="units-table-cell units-table-heading-cell u-text-bold">
 					<span class="u-hide-desktop"><?= tohtml( _("Package Names")) ?>:</span>
 					<?= tohtml($key) ?>

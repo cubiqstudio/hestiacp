@@ -76,6 +76,24 @@ export function colorLib() {
 				};
 			}
 		}
+		m = str.match(/^hsla?\(([^)]*)\)$/);
+		if (m) {
+			const t = m[1].split(/[\s,/]+/).filter(Boolean);
+			if (t.length >= 3 && !t.some((x) => x === "none" || x.startsWith("var"))) {
+				const unit = { deg: 1, grad: 0.9, rad: 180 / Math.PI, turn: 360 };
+				const hm = t[0].match(/^(-?[\d.]+)(deg|grad|rad|turn)?$/);
+				if (hm) {
+					const h = (((Number.parseFloat(hm[1]) * unit[hm[2] ?? "deg"]) % 360) + 360) % 360;
+					const sat = num(t[1], 100) / 100;
+					const lig = num(t[2], 100) / 100;
+					const k = (n) => (n + h / 30) % 12;
+					const amp = sat * Math.min(lig, 1 - lig);
+					const ch = (n) =>
+						Math.round((lig - amp * Math.max(-1, Math.min(k(n) - 3, 9 - k(n), 1))) * 255);
+					return { r: ch(0), g: ch(8), b: ch(4), a: t[3] === undefined ? 1 : num(t[3], 1) };
+				}
+			}
+		}
 		m = str.match(/^color\(srgb\s+([^)]*)\)$/);
 		if (m) {
 			const t = m[1].split(/[\s/]+/).filter(Boolean);
@@ -206,15 +224,25 @@ export function colorLib() {
 	return { parse, over, luminance, ratio, toLab, deltaE, hex };
 }
 
+const COLOR_LITERAL = /#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g;
+/** colour functions that cannot be evaluated without the browser: reported, never silently dropped */
+const UNEVALUATED = /\b(?:color-mix|color|lab|lch|oklab|oklch|hwb|light-dark)\(/;
+
 /**
- * Colour tokens of the Vylaris theme for one mode: every colour literal in tokens.css and
- * mode-<mode>.css (hex, rgb(), rgba()) with the custom property it belongs to.
- * @returns {{name: string, hex: string, rgb: number[], lab: number[]}[]}
+ * Colour tokens of the Vylaris theme for one mode: every static colour literal in tokens.css and
+ * mode-<mode>.css (hex with or without alpha, rgb(), rgba(), hsl(), hsla(), space or comma
+ * syntax) with the custom property it belongs to. A token added to those files is picked up
+ * automatically, the audit has no list of token names. Declarations that need the browser to be
+ * evaluated (color-mix(), oklch(), ...) cannot contribute and are returned in `skipped`.
+ * @returns {{colors: {name: string, hex: string, rgb: number[], lab: number[]}[], tokens: string[],
+ *   skipped: {name: string, value: string}[]}}
  */
 export function loadPalette(dir, mode) {
 	const C = colorLib();
 	const files = ["tokens.css", `mode-${mode}.css`];
 	const seen = new Map();
+	const tokens = new Set();
+	const skipped = [];
 	for (const file of files) {
 		const full = path.join(dir, file);
 		if (!fs.existsSync(full)) {
@@ -223,11 +251,14 @@ export function loadPalette(dir, mode) {
 		const css = fs.readFileSync(full, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
 		for (const decl of css.matchAll(/(--[\w-]+)\s*:\s*([^;]+);/g)) {
 			const [, name, value] = decl;
-			for (const lit of value.matchAll(/#[0-9a-fA-F]{3,8}\b|rgba?\([^)]*\)|hsla?\([^)]*\)/g)) {
+			let found = 0;
+			for (const lit of value.matchAll(COLOR_LITERAL)) {
 				const c = C.parse(lit[0]);
 				if (!c) {
+					skipped.push({ name, value: lit[0] });
 					continue;
 				}
+				found++;
 				const key = `${Math.round(c.r)},${Math.round(c.g)},${Math.round(c.b)}`;
 				if (!seen.has(key)) {
 					seen.set(key, {
@@ -237,6 +268,11 @@ export function loadPalette(dir, mode) {
 						lab: C.toLab(c),
 					});
 				}
+			}
+			if (found > 0) {
+				tokens.add(name);
+			} else if (UNEVALUATED.test(value) && !/^\s*var\(/.test(value)) {
+				skipped.push({ name, value: value.trim() });
 			}
 		}
 	}
@@ -250,7 +286,7 @@ export function loadPalette(dir, mode) {
 			seen.set(key, { name, hex: C.hex(c), rgb: value, lab: C.toLab(c) });
 		}
 	}
-	return [...seen.values()];
+	return { colors: [...seen.values()], tokens: [...tokens].sort(), skipped };
 }
 
 /**
@@ -258,11 +294,13 @@ export function loadPalette(dir, mode) {
  * Everything it needs lives inside this function.
  *
  * @param {{palette: {name: string, hex: string, lab: number[]}[], tolerance: number, mobile: boolean,
- *   maxItems: number}} opts
+ *   maxItems: number, skip?: string[]}} opts skip: sections to leave out (contrast, ui, leaks,
+ *   responsive, focus)
  */
 export function pageAudit(opts) {
 	const C = window.__vy;
 	const { palette, tolerance, mobile, maxItems } = opts;
+	const skip = new Set(opts.skip ?? []);
 	const root = document.documentElement;
 	const vw = root.clientWidth;
 
@@ -401,6 +439,100 @@ export function pageAudit(opts) {
 	const isIcon = (el) => el.matches(ICON_SELECTOR) && !el.matches("svg *");
 	const hasOwnText = (el) =>
 		[...el.childNodes].some((n) => n.nodeType === 3 && n.nodeValue.trim() !== "");
+
+	// ---- allowlist ----------------------------------------------------------------------------
+	// Known false positives. Every skipped element is counted per rule and check and comes back in
+	// `allowlisted`, so audit.mjs can list them in the report (README: "Allowlisted").
+	const allowlisted = new Map();
+	const allow = (rule, check, el, note) => {
+		const id = `${rule}|${check}`;
+		let entry = allowlisted.get(id);
+		if (!entry) {
+			entry = { rule, check, count: 0, examples: [] };
+			allowlisted.set(id, entry);
+		}
+		entry.count++;
+		if (entry.examples.length < 2) {
+			entry.examples.push({ sel: selPath(el), ...(note ? { note } : {}) });
+		}
+	};
+	const CLIP_RECT =
+		/^rect\(\s*(-?[\d.]+)(?:px)?[\s,]+(-?[\d.]+)(?:px)?[\s,]+(-?[\d.]+)(?:px)?[\s,]+(-?[\d.]+)/;
+	const hiddenCache = new WeakMap();
+	/**
+	 * Why an element is invisible by design, or null: "clip" (clip: rect() / clip-path that leaves
+	 * nothing, or the 1x1 screen-reader-only pattern), "opacity" (cumulative opacity 0), "offscreen"
+	 * (parked outside the document: left / above its origin, or absolutely positioned past its end).
+	 */
+	const hiddenByDesign = (el) => {
+		if (hiddenCache.has(el)) {
+			return hiddenCache.get(el);
+		}
+		const s = cs(el);
+		let why = null;
+		const parentWhy =
+			el.parentElement && el.parentElement !== document.body && hiddenByDesign(el.parentElement);
+		if (parentWhy) {
+			why = parentWhy;
+		} else if (cumOpacity(el) < 0.02) {
+			why = "opacity";
+		} else {
+			const positioned = s.position === "absolute" || s.position === "fixed";
+			const rect = positioned ? CLIP_RECT.exec(s.clip) : null;
+			const path = s.clipPath;
+			if (
+				(rect && (rect[2] - rect[4] <= 1 || rect[3] - rect[1] <= 1)) ||
+				/^inset\((?:50|100)%\)$/.test(path) ||
+				/^circle\(0(?:px|%)?[ )]/.test(path)
+			) {
+				why = "clip";
+			} else if (s.display !== "contents") {
+				const r = el.getBoundingClientRect();
+				if (r.width > 0 && r.height > 0) {
+					if (r.width <= 1 && r.height <= 1) {
+						why = "clip";
+					} else if (
+						r.right + scrollX <= 0 ||
+						r.bottom + scrollY <= 0 ||
+						(positioned &&
+							(r.left + scrollX >= root.scrollWidth || r.top + scrollY >= root.scrollHeight))
+					) {
+						why = "offscreen";
+					}
+				}
+			}
+		}
+		hiddenCache.set(el, why);
+		return why;
+	};
+	/**
+	 * Allowlist for one check ("contrast", "ui", "leaks", "focus"): true = leave the element out.
+	 * - xterm-helper-textarea: the vendor's off-screen keyboard sink, the terminal draws its own caret
+	 * - visually-hidden: invisible by design (see hiddenByDesign), text and UI contrast only. Only
+	 *   the root of a hidden subtree is counted, its descendants are skipped silently. Not applied
+	 *   to leaks (a closed drawer still carries theme colours that should be checked) nor to focus
+	 *   (a hidden native input stands in for a custom checkbox / switch).
+	 */
+	const allowed = (el, check) => {
+		if (!rendered(el)) {
+			return false;
+		}
+		if (el.matches("textarea.xterm-helper-textarea")) {
+			allow("xterm-helper-textarea", check, el);
+			return true;
+		}
+		if (check !== "contrast" && check !== "ui") {
+			return false;
+		}
+		const why = hiddenByDesign(el);
+		if (!why) {
+			return false;
+		}
+		if (!(el.parentElement && hiddenByDesign(el.parentElement) === why)) {
+			allow("visually-hidden", check, el, why);
+		}
+		return true;
+	};
 
 	// ---- background resolution (contrast) ----------------------------------------------------
 	const layerCache = new WeakMap();
@@ -676,7 +808,7 @@ export function pageAudit(opts) {
 	};
 
 	const contrast = { fails: mk(), unknown: mk(), checked: 0, exempt: 0 };
-	const ui = { fails: mk(), checked: 0 };
+	const ui = { fails: mk(), covered: mk(), checked: 0 };
 
 	/** union of the line boxes of the element's own text (the whole box when it has none) */
 	const textRect = (el) => {
@@ -761,7 +893,7 @@ export function pageAudit(opts) {
 		textByEl.set(el, `${textByEl.get(el) ?? ""} ${n.nodeValue}`);
 	}
 	for (const [el, text] of textByEl) {
-		if (isVisible(el)) {
+		if (!skip.has("contrast") && !allowed(el, "contrast") && isVisible(el)) {
 			checkText(el, text, "text");
 		}
 	}
@@ -769,7 +901,7 @@ export function pageAudit(opts) {
 	const TEXTUAL_INPUT =
 		"input:not([type=hidden],[type=checkbox],[type=radio],[type=range],[type=color],[type=file],[type=image])";
 	for (const el of document.querySelectorAll(`${TEXTUAL_INPUT}, textarea, select`)) {
-		if (!isVisible(el)) {
+		if (skip.has("contrast") || allowed(el, "contrast") || !isVisible(el)) {
 			continue;
 		}
 		let shown = el.value ?? "";
@@ -810,7 +942,14 @@ export function pageAudit(opts) {
 	};
 	// icon glyphs (Font Awesome)
 	for (const el of document.querySelectorAll(ICON_SELECTOR)) {
-		if (el.matches("svg *") || !isVisible(el) || isDisabled(el) || hasOwnText(el)) {
+		if (
+			skip.has("ui") ||
+			el.matches("svg *") ||
+			allowed(el, "ui") ||
+			!isVisible(el) ||
+			isDisabled(el) ||
+			hasOwnText(el)
+		) {
 			continue;
 		}
 		const c = C.parse(cs(el).color);
@@ -825,15 +964,13 @@ export function pageAudit(opts) {
 	// text field borders (or, without a border, the field fill against its surroundings)
 	const FIELDS =
 		"input:not([type=hidden],[type=checkbox],[type=radio],[type=submit],[type=button],[type=reset],[type=image],[type=file],[type=range],[type=color]), select, textarea";
-	for (const el of document.querySelectorAll(FIELDS)) {
-		if (!isVisible(el) || isDisabled(el) || !el.parentElement) {
-			continue;
-		}
+	/** worst boundary of a field against what surrounds it: its border, else its fill. null = undecidable */
+	const boundaryOf = (el) => {
 		const s = cs(el);
 		const parent = resolve(el.parentElement, null);
 		const own = resolve(el, null);
 		if (own.unknown || parent.unknown) {
-			continue;
+			return null;
 		}
 		const sides = ["Top", "Right", "Bottom", "Left"]
 			.map((d) => ({
@@ -854,10 +991,76 @@ export function pageAudit(opts) {
 			}
 			return best;
 		});
-		const w = pairs.reduce((a, b) => (b.ratio < a.ratio ? b : a));
-		uiCheck(el, w.what === "border" ? "input-border" : "input-boundary", w, {
-			text: el.type || el.localName,
-		});
+		return pairs.reduce((a, b) => (b.ratio < a.ratio ? b : a));
+	};
+	/**
+	 * A control that draws the field boundary in place of `el`: a sibling select / combobox, or a
+	 * role=combobox wrapper around it, that covers at least 90% of the field's box and has a border
+	 * of its own meeting 3:1 (a free-text input laid over a select, a combobox with an inner input).
+	 */
+	const coveringControl = (el) => {
+		const box = el.getBoundingClientRect();
+		const candidates = new Set(
+			[...el.parentElement.children].filter(
+				(x) => x !== el && x.matches("select, [role=combobox]"),
+			),
+		);
+		for (let n = el.parentElement; n && n !== document.body; n = n.parentElement) {
+			if (n.matches("[role=combobox]")) {
+				candidates.add(n);
+			}
+		}
+		for (const cand of candidates) {
+			if (!isVisible(cand)) {
+				continue;
+			}
+			const cr = cand.getBoundingClientRect();
+			const w = Math.min(box.right, cr.right) - Math.max(box.left, cr.left);
+			const h = Math.min(box.bottom, cr.bottom) - Math.max(box.top, cr.top);
+			const overlap = w > 0 && h > 0 ? (w * h) / (box.width * box.height) : 0;
+			if (overlap < 0.9) {
+				continue;
+			}
+			const own = cand.parentElement ? boundaryOf(cand) : null;
+			if (own && own.what === "border" && own.ratio >= 3) {
+				return { el: cand, overlap, ratio: own.ratio };
+			}
+		}
+		return null;
+	};
+	for (const el of document.querySelectorAll(FIELDS)) {
+		if (
+			skip.has("ui") ||
+			allowed(el, "ui") ||
+			!isVisible(el) ||
+			isDisabled(el) ||
+			!el.parentElement
+		) {
+			continue;
+		}
+		const w = boundaryOf(el);
+		if (!w) {
+			continue;
+		}
+		const kind = w.what === "border" ? "input-border" : "input-boundary";
+		const cover = w.ratio < 3 ? coveringControl(el) : null;
+		if (cover) {
+			ui.checked++;
+			allow("input-boundary-covered", "ui", el, `covered by ${selPath(cover.el)}`);
+			record(ui.covered, {
+				kind,
+				sel: selPath(el),
+				key: keyOf(el),
+				ratio: Math.round(w.ratio * 100) / 100,
+				coveredBy: selPath(cover.el),
+				coverKey: keyOf(cover.el),
+				coverRatio: Math.round(cover.ratio * 100) / 100,
+				overlap: Math.round(cover.overlap * 100) / 100,
+				at: at(el),
+			});
+			continue;
+		}
+		uiCheck(el, kind, w, { text: el.type || el.localName });
 	}
 
 	// ---- 2. foreign colours -------------------------------------------------------------------
@@ -941,7 +1144,7 @@ export function pageAudit(opts) {
 	};
 	const sideNames = ["Top", "Right", "Bottom", "Left"];
 	for (const el of [root, ...document.body.querySelectorAll("*")]) {
-		if (SKIP_TAGS.has(el.localName) || !rendered(el)) {
+		if (skip.has("leaks") || SKIP_TAGS.has(el.localName) || !rendered(el) || allowed(el, "leaks")) {
 			continue;
 		}
 		const s = cs(el);
@@ -1048,7 +1251,7 @@ export function pageAudit(opts) {
 			return cs(el).position === "fixed";
 		};
 		const offenders = new Set();
-		for (const el of document.body.querySelectorAll("*")) {
+		for (const el of skip.has("responsive") ? [] : document.body.querySelectorAll("*")) {
 			if (SKIP_TAGS.has(el.localName) || !rendered(el) || cs(el).visibility === "hidden") {
 				continue;
 			}
@@ -1082,7 +1285,7 @@ export function pageAudit(opts) {
 			});
 		}
 
-		if (mobile) {
+		if (mobile && !skip.has("responsive")) {
 			const TARGETS =
 				"a[href], button, input:not([type=hidden]), select, textarea, summary, [role=button], [role=link], [role=checkbox], [role=switch], [role=tab], [role=menuitem], [tabindex]:not([tabindex='-1'])";
 			const items = [];
@@ -1248,9 +1451,9 @@ export function pageAudit(opts) {
 		};
 		const list = [...document.querySelectorAll(FOCUSABLE)].filter(
 			(el) =>
+				!skip.has("focus") &&
 				el.tabIndex >= 0 &&
-				// xterm.js parks an invisible textarea for keyboard input, the terminal draws its own cursor
-				!el.matches(".xterm-helper-textarea") &&
+				!allowed(el, "focus") &&
 				!isDisabled(el) &&
 				rendered(el) &&
 				cs(el).visibility === "visible" &&
@@ -1369,5 +1572,13 @@ export function pageAudit(opts) {
 		}
 	}
 
-	return { contrast, ui, leaks, leakChecked, focus, responsive };
+	return {
+		contrast,
+		ui,
+		leaks,
+		leakChecked,
+		focus,
+		responsive,
+		allowlisted: [...allowlisted.values()],
+	};
 }

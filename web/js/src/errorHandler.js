@@ -5,6 +5,6 @@ export default function handleErrorMessage() {
 	const errorMessage = Alpine.store('globals').ERROR_MESSAGE;
 
 	if (errorMessage) {
-		createConfirmationDialog({ message: errorMessage });
+		createConfirmationDialog({ title: Alpine.store('globals').ERROR_TITLE, message: errorMessage });
 	}
 }

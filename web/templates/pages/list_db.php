@@ -47,22 +47,22 @@ if (!empty($_SESSION["DB_PGA_ALIAS"])) {
 				</button>
 				<ul class="toolbar-sorting-menu js-sorting-menu u-hidden">
 					<li data-entity="sort-charset">
-						<span class="name"><?= tohtml( _("Charset")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Charset")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Charset"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-date" data-sort-as-int="1">
-						<span class="name <?php if ($_SESSION['userSortOrder'] === 'date') { echo 'active'; } ?>"><?= tohtml( _("Date")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name <?php if ($_SESSION['userSortOrder'] === 'date') { echo 'active'; } ?>"><?= tohtml( _("Date")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Date"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-disk" data-sort-as-int="1">
-						<span class="name"><?= tohtml( _("Disk")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Disk")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Disk"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-name">
-						<span class="name <?php if ($_SESSION['userSortOrder'] === 'name') { echo 'active'; } ?>"><?= tohtml( _("Name")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name <?php if ($_SESSION['userSortOrder'] === 'name') { echo 'active'; } ?>"><?= tohtml( _("Name")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Name"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-server">
-						<span class="name"><?= tohtml( _("Host")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Host")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Host"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 					<li data-entity="sort-user">
-						<span class="name"><?= tohtml( _("Username")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up"><i class="fas fa-arrow-up-a-z"></i></span>
+						<span class="name"><?= tohtml( _("Username")) ?> <i class="fas fa-arrow-down-a-z"></i></span><span class="up" role="button" aria-label="<?= tohtml(sprintf(_("Sort by %s, reversed"), _("Username"))) ?>"><i class="fas fa-arrow-up-a-z" aria-hidden="true"></i></span>
 					</li>
 				</ul>
 				<?php if ($read_only !== true) { ?>
@@ -233,6 +233,7 @@ if (!empty($_SESSION["DB_PGA_ALIAS"])) {
 									class="units-table-row-action-link data-controls js-confirm-action"
 									href="/delete/db/?<?= tohtml(http_build_query(["database" => $key, "token" => $_SESSION["token"]])) ?>"
 									title="<?= tohtml( _("Delete")) ?>"
+									data-confirm-variant="danger"
 									data-confirm-title="<?= tohtml( _("Delete")) ?>"
 									data-confirm-message="<?= tohtml(sprintf(_("Are you sure you want to delete database %s?"), $key)) ?>"
 								>

@@ -144,6 +144,40 @@ node test/vylaris-preview/audit.mjs --css /tmp/css --themes vylaris,vylaris-dark
 
 The JSON file and a markdown summary (`audit.md`) are written next to `--out`. Use `--find-rule` to locate the stylesheet rule behind a reported element, and `--help` for all options. Only the default state of each page is audited (no hover or visited states), and images or blend modes are not modelled in the contrast check.
 
+### Palette
+
+The allowed colours are every static colour literal in `tokens.css` and `mode-<light|dark>.css`: hex with or without alpha (`#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`), `rgb()`/`rgba()` and `hsl()`/`hsla()` in comma or space syntax with any alpha. The loader scans all custom properties, there is no list of token names, so a new token (for example `--vy-danger-solid`) is part of the palette as soon as it is in a mode file. The comparison ignores alpha and uses the first token that owns a colour as its name, so two tokens with the same value show up once. Values that only the browser can evaluate (`color-mix()`, `oklch()`, `light-dark()`, ...) cannot be part of the palette; each one is printed as `palette warning` and written to the report, as is a colour token that exists in only one of the two mode files.
+
+### Allowlisted
+
+Known false positives are skipped inside the tool, never silently: the report has an "Allowlisted" section (and `allowlist` in the JSON, `audit.allowlisted` per page run) with the number of elements, pages and an example per theme, rule and check.
+
+| Rule                     | Checks                     | What is skipped                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| ------------------------ | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `xterm-helper-textarea`  | contrast, ui, leaks, focus | `textarea.xterm-helper-textarea`: the vendor keyboard sink of the web terminal, invisible and parked off-screen; the terminal draws its own caret.                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| `visually-hidden`        | contrast, ui               | Elements that are invisible by design: `clip: rect()` / `clip-path` that leaves nothing, the 1x1 screen-reader-only pattern (`.u-hidden-visually`), cumulative opacity 0 (pointer events do not matter, nothing is painted), and boxes parked left of or above the page or, when absolutely positioned, past its end. Only the root of a hidden subtree is counted, its descendants are skipped. The example shows the reason. Not applied to foreign colours (a closed drawer still carries theme colours) nor to focus (a hidden native input stands in for a custom checkbox or switch). |
+| `input-boundary-covered` | ui                         | A text field whose own boundary is below 3:1 but which is covered (at least 90% of its box) by a sibling `select` / `[role=combobox]`, or sits inside a `[role=combobox]` wrapper, that has a border of its own meeting 3:1 against its surroundings. Example: `input.form-control.list-editor`, a free-text input laid over a select that draws the field boundary. The example shows "covered by"; the JSON keeps the detail in `audit.ui.covered` (`coveredBy`, `overlap`, `coverRatio`).                                                                                                |
+
+Add a new exception in `pageAudit` (`allowed()` or the `ui` section in `audit-lib.mjs`) and a row to this table; an exception that does not appear in the report does not exist.
+
+### Compare two runs
+
+```bash
+# run the audit and diff it against an earlier report; the diff is part of audit.md and stdout
+node test/vylaris-preview/audit.mjs --css /tmp/css --out /tmp/audit/new.json --compare /tmp/audit/old.json [--fail-on-new]
+
+# diff two existing reports, no browser
+node test/vylaris-preview/audit.mjs --compare /tmp/audit/old.json --against /tmp/audit/new.json
+```
+
+A group is one row of the report (same category, element and colours). The table has, per theme, viewport and category, the number of **new** groups (only in the current run), **fixed** groups (only in the baseline), **unchanged** groups, how many of those unchanged groups have a different element count, and the element delta. The groups follow below the table; "No change" means no group appeared, disappeared or changed its count. Only runs (theme, viewport, page) that exist in both reports are compared, and the note says how many were left out. `--fail-on-new` exits with 1 when there is a new group.
+
+Reports written by this version carry per-page `fingerprints`. Older reports do not: they are compared per theme with pages and viewports merged (viewport column "all"), limited to the 500 groups per category those reports kept.
+
+### Speed
+
+The audit takes no screenshots; most of the time is browser work per page. `--concurrency` defaults to twice the CPU count (about 25% faster than 4 on a 4 core machine for the full set), `--skip focus,leaks` leaves the slowest sections out (they report 0), `--settle 60` shortens the wait after load, and the pre-rendered HTML in `<out dir>/html` is the only other output.
+
 ## Working on one partial in isolation
 
 ```bash

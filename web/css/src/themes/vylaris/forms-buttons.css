@@ -76,22 +76,33 @@
 	}
 }
 
+/* Textareas grow with their content (up to max-height, then they scroll) and stay resizable */
 textarea.form-control {
 	min-height: 6.5rem;
+	max-height: 24rem;
 	line-height: 1.5;
+	resize: vertical;
+	field-sizing: content;
 
 	@media (--viewport-medium) {
 		min-height: 8.5rem;
 	}
 }
 
-/* Certificates and keys: monospace, and tall enough to reach the closing -----END line */
+/* Certificates and keys stay monospace on every viewport */
 textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^="v_ssl_"]) {
 	font-family: var(--vy-font-mono);
-	font-size: 0.875rem !important;
-	min-height: 6.5rem !important;
+	font-size: 0.875rem;
+}
 
-	@media (--viewport-medium) {
+/* Without field-sizing a textarea keeps a fixed height, so give it room for the closing -----END line */
+@supports not (field-sizing: content) {
+	textarea.form-control {
+		min-height: 8.5rem;
+	}
+
+	/* beats .u-min-height100 { min-height: 100px !important } from utilities.css */
+	textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^="v_ssl_"]) {
 		min-height: 8.5rem !important;
 	}
 }
@@ -134,7 +145,8 @@ textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^=
 	}
 }
 
-/* Free text input laid over a select (DNS value, firewall IP) */
+/* Free text input laid over a select (DNS value, firewall IP). The select underneath draws the
+   field boundary, so hover and focus of the input are mirrored onto the select. */
 .form-control.list-editor {
 	position: absolute;
 	inset: 1px 32px 1px 1px;
@@ -149,12 +161,23 @@ textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^=
 		border-color: transparent;
 	}
 
+	/* the ring sits on the select's border, offset 0 makes both rings coincide */
 	&:focus {
 		outline-offset: 0;
-		border-color: var(--vy-focus-color);
+		border-color: transparent;
 		background-color: var(--vy-input-bg);
 		box-shadow: none;
 	}
+}
+
+.form-select:has(+ .list-editor:hover) {
+	border-color: var(--vy-field-border-hover);
+}
+
+.form-select:has(+ .list-editor:focus) {
+	outline: var(--vy-focus-width) solid var(--vy-focus-color);
+	outline-offset: -1px;
+	border-color: var(--vy-focus-color);
 }
 
 /* Inert fields get a fill that differs from both the page and an editable field in either mode */
@@ -326,11 +349,23 @@ textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^=
 	color: var(--vy-link);
 	text-decoration: underline;
 	text-underline-offset: 3px;
+	position: relative;
 	background-color: transparent;
 	border-radius: var(--vy-radius-xs);
 	transition:
 		color var(--vy-transition),
 		background-color var(--vy-transition);
+
+	/* 44px touch area on small viewports */
+	&::after {
+		content: "";
+		position: absolute;
+		inset: -8px;
+
+		@media (--viewport-medium) {
+			display: none;
+		}
+	}
 
 	&:hover {
 		color: var(--vy-link-hover);
@@ -348,17 +383,22 @@ textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^=
 	}
 }
 
-/* Small inline controls (generate password, help icon, text links) get a touch hit area
-   beyond their visible box, without moving the layout */
-.form-link,
-.form-label .u-unstyled-button,
-.form-label a:has(> .fas) {
+/* Icon controls inside a label (generate password, help, download) are at least 24x24 and get a
+   44px touch area on small viewports. The negative block margin keeps the label line height. */
+:is(.form-label, .form-check label) :is(.u-unstyled-button, a:has(> .fas)) {
 	position: relative;
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	min-width: 24px;
+	min-height: 24px;
+	margin-block: -4px;
+	vertical-align: middle;
 
 	&::after {
 		content: "";
 		position: absolute;
-		inset: -8px;
+		inset: -10px;
 
 		@media (--viewport-medium) {
 			display: none;
@@ -598,25 +638,22 @@ textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^=
 	}
 }
 
-/* The status red doubles as a text colour on dark surfaces and is too light to carry white text there,
-   so the fill is the same hue capped at a lightness that holds 4.5:1 in both modes */
+/* The filled danger button uses the solid red, which carries white text in both modes */
 .button-danger {
-	--vy-button-danger: oklch(from var(--vy-danger) min(l, 0.5) c h);
-
 	color: var(--vy-text-on-primary);
-	background: var(--vy-button-danger);
-	border-color: var(--vy-button-danger);
+	background: var(--vy-danger-solid);
+	border-color: var(--vy-danger-solid);
 
 	&:hover {
 		color: var(--vy-text-on-primary);
-		background: oklch(from var(--vy-button-danger) calc(l - 0.04) c h);
-		border-color: oklch(from var(--vy-button-danger) calc(l - 0.04) c h);
+		background: color-mix(in srgb, var(--vy-danger-solid) 88%, black);
+		border-color: color-mix(in srgb, var(--vy-danger-solid) 88%, black);
 	}
 
 	&:active {
 		color: var(--vy-text-on-primary);
-		background: oklch(from var(--vy-button-danger) calc(l - 0.08) c h);
-		border-color: oklch(from var(--vy-button-danger) calc(l - 0.08) c h);
+		background: color-mix(in srgb, var(--vy-danger-solid) 76%, black);
+		border-color: color-mix(in srgb, var(--vy-danger-solid) 76%, black);
 	}
 
 	&.button-secondary {
@@ -779,7 +816,11 @@ textarea.form-control:is([name="v_crt"], [name="v_key"], [name="v_csr"], [name^=
 }
 
 .tabs-panel {
-	padding: 20px;
+	padding: var(--vy-space-4);
+
+	@media (--viewport-medium) {
+		padding: var(--vy-space-5);
+	}
 
 	&:focus-visible {
 		outline-offset: -3px;

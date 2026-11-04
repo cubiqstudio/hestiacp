@@ -5,9 +5,11 @@
 //        --viewports desktop,mobile --pages all --out <dir>/audit.json [--palette-from <dir>]
 //
 //   node test/vylaris-preview/audit.mjs --find-rule <dir>/audit.json [--theme vylaris-dark]
+//   node test/vylaris-preview/audit.mjs --compare <baseline>.json --against <current>.json
 //
 // See README.md ("Audit") for the meaning of every category.
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { colorLib, loadPalette, pageAudit } from "./audit-lib.mjs";
@@ -24,6 +26,7 @@ import {
 	selectPages,
 	watchPage,
 } from "./lib/harness.mjs";
+import { COMPARED, compareReports, GROUP_ID } from "./lib/compare.mjs";
 import { previewRoot } from "./lib/php.mjs";
 import { startServer } from "./lib/server.mjs";
 import { FAKE_WEBSOCKET } from "./lib/steps.mjs";
@@ -41,7 +44,12 @@ const { values: args } = parseArgs({
 		top: { type: "string", default: "15" },
 		"max-items": { type: "string", default: "15" },
 		"full-detail": { type: "boolean", default: false },
-		concurrency: { type: "string", default: "4" },
+		concurrency: { type: "string", default: String(Math.max(4, os.availableParallelism() * 2)) },
+		settle: { type: "string" },
+		skip: { type: "string", default: "" },
+		compare: { type: "string" },
+		against: { type: "string" },
+		"fail-on-new": { type: "boolean", default: false },
 		manifest: { type: "string", default: path.join(previewRoot, "pages.json") },
 		animations: { type: "string", default: "off" },
 		"find-rule": { type: "string" },
@@ -68,8 +76,18 @@ const usage = `Usage: node test/vylaris-preview/audit.mjs --css <dir> --out <dir
   --top <n>             offenders listed per category and theme, default 15
   --max-items <n>       raw items kept per page and category in the JSON, default 15
   --full-detail         keep every raw item of every page in the JSON (can be large)
-  --concurrency <n>     parallel pages, default 4
+  --concurrency <n>     parallel pages, default 2x the CPU count (min 4); the audit takes no
+                        screenshots, so this is the main speed knob
+  --settle <ms>         wait this long after load instead of the per-page "settle" of pages.json
+                        (default 250); 60 is enough for pages without animated content
+  --skip a,b            leave sections out: contrast, ui, leaks, focus, responsive (focus and leaks
+                        are the slowest); skipped sections report 0 findings
   --animations on|off   default off (reduced motion + zero animation durations)
+
+  --compare <audit.json>  compare this run with an earlier report: new / fixed / unchanged groups
+                        per theme, viewport and category, appended to the summary
+    --against <audit.json>  no browser: compare the baseline with this existing report instead
+    --fail-on-new           exit 1 when the comparison has new groups
 
   --find-rule <audit.json>  no browser: look up the source CSS rules behind the worst foreign colours
     --theme <name>          only this theme (default: all in the report)
@@ -256,6 +274,23 @@ if (args["find-rule"]) {
 }
 
 // =================================================================================================
+// --compare <baseline> --against <current>: two existing reports, no browser
+// =================================================================================================
+if (args.against) {
+	if (!args.compare) {
+		console.error("--against needs --compare <baseline audit.json>");
+		process.exit(2);
+	}
+	const result = compareReports(
+		JSON.parse(fs.readFileSync(path.resolve(args.compare), "utf8")),
+		JSON.parse(fs.readFileSync(path.resolve(args.against), "utf8")),
+		{ top: Number.parseInt(args.top, 10) || 15, baseName: path.resolve(args.compare) },
+	);
+	console.log(result.md);
+	process.exit(args["fail-on-new"] && result.newGroups > 0 ? 1 : 0);
+}
+
+// =================================================================================================
 // run the audit
 // =================================================================================================
 if (!args.out || !args.css) {
@@ -270,6 +305,12 @@ const outDir = path.dirname(outFile);
 const cssDir = path.resolve(args.css);
 const themes = args.themes.split(",").filter(Boolean);
 const tolerance = Number.parseFloat(args.tolerance);
+const SECTIONS = ["contrast", "ui", "leaks", "focus", "responsive"];
+const skip = args.skip.split(",").filter(Boolean);
+if (skip.some((x) => !SECTIONS.includes(x))) {
+	console.error(`--skip takes ${SECTIONS.join(", ")}`);
+	process.exit(2);
+}
 const top = Number.parseInt(args.top, 10) || 15;
 const maxItems = Number.parseInt(args["max-items"], 10) || 15;
 let viewportNames;
@@ -292,17 +333,43 @@ const paletteDir = path.resolve(
 const modeOf = (theme) =>
 	args["palette-mode"] === "auto" ? (/dark/.test(theme) ? "dark" : "light") : args["palette-mode"];
 const palettes = {};
+const paletteTokens = {};
+const paletteWarnings = [];
 try {
-	for (const theme of themes) {
-		const mode = modeOf(theme);
-		palettes[mode] ??= loadPalette(paletteDir, mode);
+	for (const mode of ["light", "dark"]) {
+		const loaded = loadPalette(paletteDir, mode);
+		paletteTokens[mode] = loaded.tokens;
+		for (const { name, value } of loaded.skipped) {
+			paletteWarnings.push(
+				`${mode}: ${name} needs the browser to be evaluated (${value}), not in the palette`,
+			);
+		}
+		if (themes.some((theme) => modeOf(theme) === mode)) {
+			palettes[mode] = loaded.colors;
+		}
 	}
 } catch (error) {
 	console.error(error.message);
 	process.exit(2);
 }
+// a colour token that exists in one mode only is a mode file that was forgotten
+for (const [from, to] of [
+	["light", "dark"],
+	["dark", "light"],
+]) {
+	for (const name of paletteTokens[from].filter((n) => !paletteTokens[to].includes(n))) {
+		paletteWarnings.push(
+			`${name} has a static colour in mode-${from}.css but not in mode-${to}.css`,
+		);
+	}
+}
 for (const [mode, list] of Object.entries(palettes)) {
-	console.log(`palette ${mode}: ${list.length} colours from ${paletteDir}`);
+	console.log(
+		`palette ${mode}: ${list.length} colours from ${paletteTokens[mode].length} tokens in ${paletteDir}`,
+	);
+}
+for (const warning of paletteWarnings) {
+	console.warn(`palette warning: ${warning}`);
 }
 
 const concurrency = Math.max(1, Number.parseInt(args.concurrency, 10) || 4);
@@ -359,6 +426,7 @@ await pool(jobs, concurrency, async ({ theme, vp, entry }) => {
 		failedRequests: [],
 		stepErrors: [],
 	};
+	const pageEntry = args.settle ? { ...entry, settle: Number.parseInt(args.settle, 10) } : entry;
 	const page = await contexts.get(`${theme}/${vp}`).newPage();
 	watchPage(page, rec, vp, base);
 	if (entry.fakeSocket) {
@@ -368,7 +436,7 @@ await pool(jobs, concurrency, async ({ theme, vp, entry }) => {
 		const { errors } = await openPreviewPage(page, {
 			base,
 			theme,
-			entry,
+			entry: pageEntry,
 			viewport: vp,
 			consoleErrors: rec.consoleErrors,
 			tag: vp,
@@ -379,6 +447,7 @@ await pool(jobs, concurrency, async ({ theme, vp, entry }) => {
 		rec.audit = await page.evaluate(pageAudit, {
 			palette: palettes[modeOf(theme)],
 			tolerance,
+			skip,
 			mobile: vp === "mobile",
 			maxItems: args["full-detail"] ? 100000 : Math.max(maxItems, 5000),
 		});
@@ -406,18 +475,6 @@ records.sort(
 		viewportNames.indexOf(a.viewport) - viewportNames.indexOf(b.viewport) ||
 		a.page.localeCompare(b.page),
 );
-
-const CATEGORIES = [
-	["contrast", "Text contrast"],
-	["ui", "Non-text contrast"],
-	["leaks", "Foreign colours"],
-	["focus", "Focus: no indicator"],
-	["focusWeak", "Focus: colour/bg only"],
-	["focusLow", "Focus: ring < 3:1"],
-	["overflow", "H-overflow culprits"],
-	["targets", "Touch targets < 24px"],
-	["errors", "Console / request errors"],
-];
 
 /** Counters of one record, plus the groups it feeds. */
 function countsOf(rec) {
@@ -523,72 +580,86 @@ function groupBy(theme, collect, keyFn, merge) {
 		.sort((a, b) => b.count - a.count);
 }
 
+/** raw items of a record per category: what the groups (and the fingerprints) are made of */
+const COLLECT = {
+	contrast: (r) => r.audit.contrast.fails.items,
+	contrastUnknown: (r) => r.audit.contrast.unknown.items,
+	ui: (r) => r.audit.ui.fails.items,
+	leaks: (r) => r.audit.leaks,
+	focus: (r) => r.audit.focus.fails.items,
+	focusWeak: (r) => r.audit.focus.weak.items,
+	focusLow: (r) => r.audit.focus.lowContrast.items,
+	overflow: (r) => r.audit.responsive.culprits.items,
+	targets: (r) => r.audit.responsive.targets.fails.items,
+	errors: (r) =>
+		[...r.consoleErrors, ...r.failedRequests, ...r.stepErrors, ...r.php].map((m) => ({
+			key: m.replace(/^\[(desktop|mobile)\] /, "").slice(0, 160),
+			sel: "",
+		})),
+};
+const keepMin = (g, item) => {
+	if (item.ratio !== undefined && item.ratio < g.ratio) {
+		g.ratio = item.ratio;
+	}
+};
+const MERGE = { contrast: keepMin, ui: keepMin, focusLow: keepMin };
+
 const groupsByTheme = {};
 for (const theme of themes) {
-	const keepMin = (g, item) => {
-		if (item.ratio !== undefined && item.ratio < g.ratio) {
-			g.ratio = item.ratio;
+	groupsByTheme[theme] = Object.fromEntries(
+		Object.keys(COLLECT).map((cat) => [
+			cat,
+			groupBy(theme, COLLECT[cat], GROUP_ID[cat], MERGE[cat]),
+		]),
+	);
+}
+
+// one row per theme / viewport / page / category / group id with its element count: what --compare diffs
+const fingerprints = [];
+for (const rec of records) {
+	if (!rec.audit) {
+		continue;
+	}
+	for (const [cat] of COMPARED) {
+		const counts = new Map();
+		for (const item of COLLECT[cat](rec)) {
+			const id = GROUP_ID[cat](item);
+			counts.set(id, (counts.get(id) ?? 0) + (item.count ?? 1));
 		}
-	};
-	groupsByTheme[theme] = {
-		contrast: groupBy(
-			theme,
-			(r) => r.audit.contrast.fails.items,
-			(i) => `${i.kind}|${i.key}|${i.fg}|${i.bg}`,
-			keepMin,
-		),
-		contrastUnknown: groupBy(
-			theme,
-			(r) => r.audit.contrast.unknown.items,
-			(i) => `${i.kind}|${i.key}`,
-		),
-		ui: groupBy(
-			theme,
-			(r) => r.audit.ui.fails.items,
-			(i) => `${i.kind}|${i.key}|${i.fg}|${i.bg}`,
-			keepMin,
-		),
-		leaks: groupBy(
-			theme,
-			(r) => r.audit.leaks,
-			(i) => `${i.prop}|${i.color}|${i.key}`,
-		),
-		focus: groupBy(
-			theme,
-			(r) => r.audit.focus.fails.items,
-			(i) => i.key,
-		),
-		focusWeak: groupBy(
-			theme,
-			(r) => r.audit.focus.weak.items,
-			(i) => `${i.key}|${i.changes.join()}`,
-		),
-		focusLow: groupBy(
-			theme,
-			(r) => r.audit.focus.lowContrast.items,
-			(i) => `${i.key}|${i.indicator}`,
-			keepMin,
-		),
-		overflow: groupBy(
-			theme,
-			(r) => r.audit.responsive.culprits.items,
-			(i) => i.key,
-		),
-		targets: groupBy(
-			theme,
-			(r) => r.audit.responsive.targets.fails.items,
-			(i) => i.key,
-		),
-		errors: groupBy(
-			theme,
-			(r) =>
-				[...r.consoleErrors, ...r.failedRequests, ...r.stepErrors, ...r.php].map((m) => ({
-					key: m.replace(/^\[(desktop|mobile)\] /, "").slice(0, 160),
-					sel: "",
-				})),
-			(i) => i.key,
-		),
-	};
+		for (const [id, count] of counts) {
+			fingerprints.push([rec.theme, rec.viewport, rec.page, cat, id, count]);
+		}
+	}
+}
+
+// known false positives the audit skipped: per theme, rule and check
+const allowlist = [];
+for (const theme of themes) {
+	const rows = new Map();
+	for (const rec of records) {
+		if (rec.theme !== theme || !rec.audit) {
+			continue;
+		}
+		for (const a of rec.audit.allowlisted) {
+			const id = `${a.rule}|${a.check}`;
+			const row = rows.get(id) ?? {
+				theme,
+				rule: a.rule,
+				check: a.check,
+				count: 0,
+				pages: new Set(),
+				viewports: new Set(),
+				example: `${rec.page}/${rec.viewport}: ${a.examples[0].sel}${a.examples[0].note ? ` (${a.examples[0].note})` : ""}`,
+			};
+			row.count += a.count;
+			row.pages.add(rec.page);
+			row.viewports.add(rec.viewport);
+			rows.set(id, row);
+		}
+	}
+	for (const row of rows.values()) {
+		allowlist.push({ ...row, pages: [...row.pages], viewports: [...row.viewports] });
+	}
 }
 
 // per page "worst pages" (for the JSON and the summary)
@@ -673,11 +744,16 @@ const report = {
 		paletteDir,
 		paletteModes: Object.fromEntries(themes.map((t) => [t, modeOf(t)])),
 		paletteSize: Object.fromEntries(Object.entries(palettes).map(([m, l]) => [m, l.length])),
+		paletteTokens,
+		paletteWarnings,
+		skipped: skip,
 		tolerance,
 	},
 	summary,
+	allowlist,
 	groups: jsonGroups,
 	worstPages,
+	fingerprints,
 	records: trimmed,
 };
 fs.writeFileSync(
@@ -711,6 +787,25 @@ md.push(
 	`Pages: ${pages.length}, themes: ${themes.join(", ")}, viewports: ${viewportNames.join(", ")}. Palette: ${themes.map((t) => `${t} -> ${modeOf(t)}`).join(", ")} (${paletteDir.replace(`${repoRoot}/`, "")}), tolerance dE ${tolerance}.`,
 	"",
 );
+let comparison = null;
+if (args.compare) {
+	const baseFile = path.resolve(args.compare);
+	try {
+		comparison = compareReports(JSON.parse(fs.readFileSync(baseFile, "utf8")), report, {
+			top,
+			baseName: baseFile,
+		});
+	} catch (error) {
+		console.error(`--compare: ${error.message}`);
+		process.exit(2);
+	}
+}
+if (skip.length) {
+	md.push(`Sections left out with --skip: ${skip.join(", ")} (they show 0).`, "");
+}
+for (const warning of paletteWarnings) {
+	md.push(`Palette warning: ${warning}`, "");
+}
 md.push("## Overview", "");
 md.push(
 	'Counts are elements (or element/colour combinations for foreign colours); one problem can be counted in several rows when it shows on several pages. "browser ring only" = focusable elements whose only focus indicator is the browser default ring (no theme rule).',
@@ -756,6 +851,36 @@ md.push(
 	),
 	"",
 );
+
+if (comparison) {
+	md.push(comparison.md);
+}
+
+md.push(
+	"## Allowlisted (skipped on purpose, not findings)",
+	"",
+	"Known false positives, handled in the tool (README: Audit, Allowlisted). Counts are elements.",
+	"",
+);
+if (allowlist.length === 0) {
+	md.push("none matched on these pages", "");
+} else {
+	md.push(
+		table(
+			["theme", "rule", "check", "elements", "pages", "viewports", "example"],
+			allowlist.map((a) => [
+				a.theme,
+				a.rule,
+				a.check,
+				a.count,
+				a.pages.length,
+				a.viewports.join(", "),
+				a.example,
+			]),
+		),
+		"",
+	);
+}
 
 const sections = [
 	[
@@ -861,3 +986,6 @@ const mdFile = `${outFile.replace(/\.json$/, "")}.md`;
 fs.writeFileSync(mdFile, mdText);
 console.log(`\n${mdText}`);
 console.log(`\nJSON: ${outFile}\nMarkdown: ${mdFile}`);
+if (args["fail-on-new"] && comparison && comparison.newGroups > 0) {
+	process.exitCode = 1;
+}

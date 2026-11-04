@@ -209,9 +209,10 @@ pre {
 /* Tables
    ========================================================================== */
 
+/* No tabular figures on the centred unit cells: they hold slugs and hostnames
+   ('business-plus', 'child-ns') whose hyphens Inter widens with tnum, and centred
+   text does not line up by digit anyway */
 table,
-.units-table-cell.u-text-center,
-.units-table-cell.u-text-center-desktop,
 .top-bar-usage,
 .stats,
 .values-list,
@@ -223,6 +224,19 @@ caption {
 	padding: var(--vy-space-2) var(--vy-space-3);
 	text-align: start;
 	color: var(--vy-text-muted);
+}
+
+/* Long tokens (record names, user names, hostnames) may break anywhere only when the table
+   would otherwise outgrow its container (anywhere lets the column shrink, which break-word
+   does not). The minimum width keeps a column from being squeezed to a single character, so
+   'mail._domainkey' is not split after 'k'. The doubled class beats the same property on
+   .units-table-heading-cell in toolbar-units.css */
+.units-table-cell,
+.units-table-cell.units-table-heading-cell {
+	min-width: 12ch;
+	overflow-wrap: anywhere;
+	word-break: normal;
+	hyphens: manual;
 }
 
 th,
@@ -242,12 +256,12 @@ th {
    ========================================================================== */
 
 .u-text-bold {
-	font-weight: 600 !important;
+	font-weight: 600 !important; /* beats utilities.css .u-text-bold (bold !important) */
 }
 
-.u-console {
-	font-size: 1rem !important;
-	line-height: 1.4 !important;
+.form-control.u-console {
+	font-size: 1rem;
+	line-height: 1.4 !important; /* beats utilities.css .u-console (line-height: 1.2 !important) */
 }
 
 /* Brand mark
@@ -280,14 +294,6 @@ th {
 
 .form-container {
 	padding: var(--vy-space-6) var(--vy-space-4);
-}
-
-.stats {
-	padding-inline: var(--vy-space-4);
-
-	@media (--viewport-large) {
-		padding-inline: 0;
-	}
 }
 
 /* Icon accents: toolbar buttons and form actions use the link colour, not the rainbow of the utility classes
