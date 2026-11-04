@@ -34,7 +34,7 @@ is_port_valid() {
 	# Check if PORT is already used
 	BUSY_PORT=$(lsof -i:"$PORT")
 	if [ -n "$BUSY_PORT" ] && [ "$PORT" != "$BACKEND_PORT" ]; then
-		echo "Port is already used by Hestia, please set anotherone!"
+		echo "Port is already used by ${APP_NAME:-VylarisSpace}, please set anotherone!"
 		log_event "$E_INUSE" "$ARGUMENTS"
 		exit "$E_INUSE"
 	fi
@@ -98,9 +98,9 @@ fi
 #----------------------------------------------------------#
 
 # Logging
-"$BIN/v-log-action" "system" "Warning" "System" "Hestia Control Panel backend port changed (New Value: $PORT, Old Value: $ORIGINAL_PORT)."
+"$BIN/v-log-action" "system" "Warning" "System" "${APP_NAME:-VylarisSpace} backend port changed (New Value: $PORT, Old Value: $ORIGINAL_PORT)."
 if [ $LISTEN_ROWS -gt 1 ]; then
-	"$BIN/v-log-action" "system" "Warning" "System" "Hestia Control Panel backend port: Use first of $LISTEN_ROWS listened ports in $NGINX_CONFIG"
+	"$BIN/v-log-action" "system" "Warning" "System" "${APP_NAME:-VylarisSpace} backend port: Use first of $LISTEN_ROWS listened ports in $NGINX_CONFIG"
 fi
 log_event "$OK" "$ARGUMENTS"
 

@@ -20,6 +20,7 @@ source "$HESTIA/install/upgrade/upgrade.conf"
 
 MODE=$1
 user="$ROOT_USER"
+app_name="${APP_NAME:-VylarisSpace}"
 
 PM_INSTALL_DIR="$HESTIA/web/inc"
 QUICK_INSTALL_DIR="$HESTIA/web/src"
@@ -49,7 +50,7 @@ fi
 if [ ! -f "$COMPOSER_BIN" ]; then
 	$BIN/v-add-user-composer "$user"
 	if [ $? -ne 0 ]; then
-		$BIN/v-add-user-notification "$ROOT_USER" 'Composer installation failed!' '<p class="u-text-bold">Hestia will not work without Composer.</p><p>Please try running the installer manually from a shell session:<br><code>v-add-sys-dependencies</code></p><p>If this continues, <a href="https://github.com/hestiacp/hestiacp/issues" target="_blank">open an issue on GitHub</a>.</p>'
+		$BIN/v-add-user-notification "$ROOT_USER" 'Composer installation failed!' '<p class="u-text-bold">'"$app_name"' will not work without Composer.</p><p>Please try running the installer manually from a shell session:<br><code>v-add-sys-dependencies</code></p>'
 		exit 1
 	fi
 fi
@@ -107,9 +108,7 @@ install_dependencies() {
 # Check if installation was successful, if not abort script and throw error message notification
 if ! install_dependencies "$PM_INSTALL_DIR"; then
 	echo "ERROR: PHPMailer installation failed!"
-	echo "Please report this to our development team:"
-	echo "https://github.com/hestiacp/hestiacp/issues"
-	$BIN/v-add-user-notification "$ROOT_USER" 'Hestia PHP dependencies installation failed!' '<p>Please <a href="https://github.com/hestiacp/hestiacp/issues" target="_blank">open an issue on GitHub</a> to report this to our development team.</p>'
+	$BIN/v-add-user-notification "$ROOT_USER" 'PHP dependencies installation failed!' '<p>The PHP dependencies required by '"$app_name"' could not be installed. Please check the system log for details.</p>'
 	if [ -f "$PM_INSTALL_DIR/vendor/autoload.php" ]; then
 		echo "The previously installed PHP dependencies have been kept."
 	else
@@ -121,9 +120,7 @@ fi
 
 if ! install_dependencies "$QUICK_INSTALL_DIR"; then
 	echo "ERROR: Quick install dependencies installation failed!"
-	echo "Please report this to our development team:"
-	echo "https://github.com/hestiacp/hestiacp/issues"
-	$BIN/v-add-user-notification "$ROOT_USER" 'Hestia Quick Install dependencies installation failed!' '<p>Please <a href="https://github.com/hestiacp/hestiacp/issues" target="_blank">open an issue on GitHub</a> to report this to our development team.</p>'
+	$BIN/v-add-user-notification "$ROOT_USER" 'Quick Install dependencies installation failed!' '<p>The Quick Install dependencies required by '"$app_name"' could not be installed. Please check the system log for details.</p>'
 	if [ -f "$QUICK_INSTALL_DIR/vendor/autoload.php" ]; then
 		echo "The previously installed Quick Install dependencies have been kept."
 	fi

@@ -1,12 +1,10 @@
 name: BATS testsuite
 
+# Manual only on this fork: the suite starts privileged containers and runs for
+# a long time, so it is not triggered for every pull request. Start it from the
+# Actions tab when needed.
 on:
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - ready_for_review
+  workflow_dispatch:
 
 permissions:
   contents: read

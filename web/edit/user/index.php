@@ -131,7 +131,7 @@ unset($output);
 
 // List themes
 exec(HESTIA_CMD . "v-list-sys-themes json", $output, $return_var);
-$themes = json_decode(implode("", $output), true);
+$themes = visible_themes(json_decode(implode("", $output), true));
 unset($output);
 
 // List shells

@@ -8,7 +8,12 @@ include $_SERVER["DOCUMENT_ROOT"] . "/inc/main.php";
 // Check token
 verify_csrf($_GET);
 
-if ($_SESSION["userContext"] === "admin") {
+if (($_SESSION["UPSTREAM_UPDATES"] ?? "no") !== "yes") {
+	// Upstream update channels are switched off (UPSTREAM_UPDATES in hestia.conf)
+	$_SESSION["error_msg"] = _(
+		"Upstream updates are disabled. This server is updated through its own package source.",
+	);
+} elseif ($_SESSION["userContext"] === "admin") {
 	if (!empty($_GET["pkg"])) {
 		$v_pkg = quoteshellarg($_GET["pkg"]);
 		exec(HESTIA_CMD . "v-update-sys-hestia " . $v_pkg, $output, $return_var);

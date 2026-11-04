@@ -580,6 +580,16 @@
 			}
 		},
 		{
+			"id": "edit-user-2fa",
+			"group": "edit",
+			"template": "edit_user",
+			"tab": "USER",
+			"variant": "twofa",
+			"get": {
+				"user": "löwenzahn"
+			}
+		},
+		{
 			"id": "edit-user-self",
 			"group": "edit",
 			"template": "edit_user",

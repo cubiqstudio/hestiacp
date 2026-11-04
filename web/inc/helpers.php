@@ -179,6 +179,45 @@ function display_title($tab) {
 	return str_replace($array1, $array2, $_SESSION["TITLE"]);
 }
 
+// Returns the URL of a documentation page, or an empty string when no link must be shown.
+// No documentation site is configured for this product, so the result is always empty;
+// templates must hide the link (or "More info" text) when it is empty.
+function docs_url($path = "") {
+	if (($_SESSION["HIDE_DOCS"] ?? "yes") === "yes") {
+		return "";
+	}
+	$base = ""; // Set to a documentation base URL once one exists
+	if ($base === "") {
+		return "";
+	}
+	return rtrim($base, "/") . "/" . ltrim($path, "/");
+}
+
+// Upstream themes that are no longer offered. Their files stay on disk (default.css is the
+// mandatory base), they are only hidden from the theme dropdowns.
+function legacy_themes() {
+	return ["default", "dark", "flat", "vestia"];
+}
+
+// Removes the legacy themes from a theme list (output of v-list-sys-themes).
+function visible_themes($themes) {
+	if (!is_array($themes)) {
+		return [];
+	}
+	return array_values(array_diff($themes, legacy_themes()));
+}
+
+// Maps a stored legacy theme name to its Vylaris counterpart so old settings still render.
+function resolve_theme($theme) {
+	if ($theme === "dark") {
+		return "vylaris-dark";
+	}
+	if (empty($theme) || in_array($theme, legacy_themes(), true)) {
+		return "vylaris";
+	}
+	return $theme;
+}
+
 // Human readable names for the theme dropdowns; unknown (custom) themes keep their file name.
 function theme_display_name($theme) {
 	$names = [

@@ -167,7 +167,8 @@ for ip in $ips; do
 done
 
 # Updating NAT
-pub_ipv4="$(curl -fsLm5 --retry 2 --ipv4 https://ip.hestiacp.com/)"
+# Public address lookup (NAT detection); a neutral echo service, not an upstream project host
+pub_ipv4="$(curl -fsLm5 --retry 2 --ipv4 https://api.ipify.org)"
 if [ ! -e "$HESTIA/data/ips/$pub_ipv4" ]; then
 	if [ -z "$(grep -R "$pub_ipv4" $HESTIA/data/ips/)" ]; then
 		ip="$(ls -t $HESTIA/data/ips/ | head -n1)"

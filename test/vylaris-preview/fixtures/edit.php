@@ -177,7 +177,13 @@ return [
 			"v_login_use_iplist" => "no",
 			"v_login_allowed_ips" => "",
 			"v_twofa" => $variant === "twofa" ? "JBSWY3DPEHPK3PXP" : "",
-			"v_qrcode" => "",
+			"v_qrcode" =>
+				$variant === "twofa"
+					? "data:image/svg+xml;base64," .
+						base64_encode(
+							'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 8 8" width="160" height="160"><rect width="8" height="8" fill="#fff"/><path d="M0 0h3v3H0zM5 0h3v3H5zM0 5h3v3H0zM4 4h1v1H4zM6 5h2v1H6zM5 7h3v1H5z"/></svg>',
+						)
+					: "",
 			"v_password" => "",
 			"languages" => fx_languages(),
 			"themes" => ["vylaris", "vylaris-dark", "dark", "flat", "default"],

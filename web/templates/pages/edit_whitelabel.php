@@ -19,7 +19,7 @@
 <div class="container">
 	<form
 		x-data="{
-			hide_docs: '<?= tohtml($v_hide_docs ?? "no") ?>',
+			hide_docs: '<?= tohtml($v_hide_docs ?? "yes") ?>',
 		}"
 		id="main-form"
 		name="v_configure_server"
@@ -111,41 +111,6 @@
 						</select>
 					</div>
 				</div>
-			</details>
-			<!-- Custom Logo options section -->
-			<details class="box-collapse u-mb10">
-				<summary class="box-collapse-header">
-					<i class="fas fa-gear u-mr15"></i>
-					<?= tohtml( _("Custom Logo")) ?>
-				</summary>
-				<div class="box-collapse-content">
-					<div class="u-mb10">
-						<label for="v_custom_logo" class="form-label">
-							<?= tohtml( _("Custom Logo")) ?>
-						</label>
-					</div>
-					<div class="u-mb10">
-						<p class="u-mb10"><?= tohtml(sprintf(_("Upload the files to %s"), "/usr/local/hestia/web/images/custom/")) ?></p>
-						<ul>
-							<li><code>logo.svg</code> <small>(100px x 120px)</small></li>
-							<li><code>logo.png</code> <small>(100px x 120px)</small></li>
-							<li><code>logo-header.svg</code> <small>(54px x 29px)</small></li>
-							<li><code>favicon.png</code> <small>(64px x 64px)</small></li>
-							<li><code>favicon.ico</code> <small>(16px x 16px)</small></li>
-						</ul>
-					</div>
-					<div class="u-mb10">
-						<input type="checkbox" id="v_update_logo" name="v_update_logo" value="yes">
-						<label for="v_update_logo" class="form-label">
-							<?= tohtml( _("Update logo")) ?>
-						</label>
-					</div>
-					<div class="u-mb10">
-						<input type="checkbox" id="v_reset_logo" name="v_reset_logo" value="yes">
-						<label for="v_reset_logo" class="form-label">
-							<?= tohtml( _("Reset Logo")) ?>
-						</label>
-					</div>
 			</details>
 		</div>
 	</form>

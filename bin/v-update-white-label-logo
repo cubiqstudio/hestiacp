@@ -4,7 +4,7 @@
 #
 # example: v-update-white-label-logo
 #
-# Replace Hestia logos with User created logo's
+# Replace the panel logos with user created logos
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -25,6 +25,15 @@ source_conf "$HESTIA/conf/hestia.conf"
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
+
+# Downloading the default logos from upstream would bring back the upstream branding
+# and is only done when UPSTREAM_UPDATES='yes' is set in hestia.conf. Custom logos
+# below are always applied.
+if [ "$download" = "yes" ] && [ "${UPSTREAM_UPDATES:-no}" != "yes" ]; then
+	echo "Upstream updates are disabled (UPSTREAM_UPDATES=no) - VylarisSpace is updated through its own package source."
+	echo "Default logos are not downloaded; the logos shipped with the installed package stay in place."
+	download="no"
+fi
 
 if [ "$reset" = "yes" ]; then
 	rm -rf "$HESTIA/web/images/custom/"

@@ -1,3 +1,7 @@
+<?php
+	// Upstream update channels are switched off unless UPSTREAM_UPDATES is 'yes' in hestia.conf
+	$upstream_updates = ($_SESSION["UPSTREAM_UPDATES"] ?? "no") === "yes";
+?>
 <!-- Begin toolbar -->
 <div class="toolbar">
 	<div class="toolbar-inner">
@@ -5,20 +9,22 @@
 			<a class="button button-secondary button-back js-button-back" href="/list/server/">
 				<i class="fas fa-arrow-left icon-blue"></i><?= tohtml( _("Back")) ?>
 			</a>
-			<?php
-				if ($autoupdate == 'Enabled') {
-					$btn_url = '/delete/cron/autoupdate/?token='.$_SESSION['token'].'';
-					$btn_icon = 'fa-toggle-on icon-green';
-					$btn_label = _('Disable Automatic Updates');
-				} else {
-					$btn_url = '/add/cron/autoupdate/?token='.$_SESSION['token'].'';
-					$btn_icon = 'fa-toggle-off icon-red';
-					$btn_label = _('Enable Automatic Updates');
-				}
-			?>
-			<a class="button button-secondary" href="<?= tohtml($btn_url) ?>">
-				<i class="fas <?= tohtml($btn_icon) ?>"></i><?= tohtml($btn_label) ?>
-			</a>
+			<?php if ($upstream_updates) { ?>
+				<?php
+					if ($autoupdate == 'Enabled') {
+						$btn_url = '/delete/cron/autoupdate/?token='.$_SESSION['token'].'';
+						$btn_icon = 'fa-toggle-on icon-green';
+						$btn_label = _('Disable Automatic Updates');
+					} else {
+						$btn_url = '/add/cron/autoupdate/?token='.$_SESSION['token'].'';
+						$btn_icon = 'fa-toggle-off icon-red';
+						$btn_label = _('Enable Automatic Updates');
+					}
+				?>
+				<a class="button button-secondary" href="<?= tohtml($btn_url) ?>">
+					<i class="fas <?= tohtml($btn_icon) ?>"></i><?= tohtml($btn_label) ?>
+				</a>
+			<?php } ?>
 		</div>
 	</div>
 </div>
@@ -28,12 +34,21 @@
 
 	<h1 class="u-text-center u-hide-desktop u-mt20 u-pr30 u-mb20 u-pl30"><?= tohtml( _("Updates")) ?></h1>
 
+	<?php if (!$upstream_updates) { ?>
+		<div class="alert alert-info u-mt20 u-mb20" role="alert">
+			<i class="fas fa-info"></i>
+			<p><?= tohtml( _("Upstream updates are disabled. This server is updated through its own package source. The installed package versions are listed below.")) ?></p>
+		</div>
+	<?php } ?>
+
 	<div class="units-table js-units-container">
 		<div class="units-table-header">
 			<div class="units-table-cell"><?= tohtml( _("Package Name")) ?></div>
 			<div class="units-table-cell"><?= tohtml( _("Description")) ?></div>
 			<div class="units-table-cell u-text-center"><?= tohtml( _("Version")) ?></div>
-			<div class="units-table-cell u-text-center"><?= tohtml( _("Status")) ?></div>
+			<?php if ($upstream_updates) { ?>
+				<div class="units-table-cell u-text-center"><?= tohtml( _("Status")) ?></div>
+			<?php } ?>
 		</div>
 
 		<!-- Begin update list item loop -->
@@ -41,7 +56,7 @@
 			foreach ($data as $key => $value) {
 				++$i;
 
-				if ($data[$key]['UPDATED'] == 'yes') {
+				if (!$upstream_updates || $data[$key]['UPDATED'] == 'yes') {
 					$status = 'active';
 					$upd_status = 'updated';
 				} else {
@@ -62,14 +77,16 @@
 					<span class="u-hide-desktop u-text-bold"><?= tohtml( _("Version")) ?>:</span>
 					<?= tohtml($data[$key]["VERSION"]) ?> (<?= tohtml($data[$key]["ARCH"]) ?>)
 				</div>
-				<div class="units-table-cell u-text-center-desktop">
-					<span class="u-hide-desktop u-text-bold"><?= tohtml( _("Status")) ?>:</span>
-					<?php if ($data[$key]['UPDATED'] == 'no'): ?>
-						<i class="fas fa-triangle-exclamation icon-orange" title="<?= tohtml( _("Update available")) ?>"></i>
-					<?php elseif ($data[$key]['UPDATED'] == 'yes'): ?>
-						<i class="fas fa-circle-check icon-green" title="<?= tohtml( _("Package up-to-date")) ?>"></i>
-					<?php endif; ?>
-				</div>
+				<?php if ($upstream_updates) { ?>
+					<div class="units-table-cell u-text-center-desktop">
+						<span class="u-hide-desktop u-text-bold"><?= tohtml( _("Status")) ?>:</span>
+						<?php if ($data[$key]['UPDATED'] == 'no'): ?>
+							<i class="fas fa-triangle-exclamation icon-orange" title="<?= tohtml( _("Update available")) ?>"></i>
+						<?php elseif ($data[$key]['UPDATED'] == 'yes'): ?>
+							<i class="fas fa-circle-check icon-green" title="<?= tohtml( _("Package up-to-date")) ?>"></i>
+						<?php endif; ?>
+					</div>
+				<?php } ?>
 			</div>
 		<?php } ?>
 	</div>

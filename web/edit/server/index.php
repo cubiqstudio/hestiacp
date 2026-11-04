@@ -103,7 +103,7 @@ unset($output);
 
 // List themes
 exec(HESTIA_CMD . "v-list-sys-themes json", $output, $return_var);
-$theme = json_decode(implode("", $output), true);
+$theme = visible_themes(json_decode(implode("", $output), true));
 unset($output);
 
 // List dns cluster hosts

@@ -298,9 +298,11 @@
 							<input x-model="nginxCacheEnabled" class="form-check-input" type="checkbox" name="v_nginx_cache_check" id="v_nginx_cache_check">
 							<label for="v_nginx_cache_check">
 								<?= tohtml( _("Enable FastCGI cache")) ?>
-								<a href="https://hestiacp.com/docs/server-administration/web-templates.html#nginx-fastcgi-cache" target="_blank" class="u-ml5">
-									<i class="fas fa-circle-question"></i>
-								</a>
+								<?php if (docs_url() !== "") { ?>
+									<a href="<?= tohtml(docs_url("server-administration/web-templates.html#nginx-fastcgi-cache")) ?>" target="_blank" class="u-ml5">
+										<i class="fas fa-circle-question"></i>
+									</a>
+								<?php } ?>
 							</label>
 						</div>
 						<div x-cloak x-show="nginxCacheEnabled" id="v_nginx_duration" class="u-pl30">

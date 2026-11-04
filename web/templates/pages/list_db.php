@@ -29,8 +29,8 @@ if (!empty($_SESSION["DB_PGA_ALIAS"])) {
 						<i class="fas fa-database icon-orange"></i>phpPgAdmin
 					</a>
 				<?php } ?>
-				<?php if (ipUsed()) { ?>
-					<a target="_blank" href="https://hestiacp.com/docs/server-administration/databases.html#why-i-can-t-use-http-ip-phpmyadmin">
+				<?php if (ipUsed() && docs_url() !== "") { ?>
+					<a target="_blank" href="<?= tohtml(docs_url("server-administration/databases.html#why-i-can-t-use-http-ip-phpmyadmin")) ?>">
 						<i class="fas fa-circle-question"></i>
 					</a>
 				<?php } ?>

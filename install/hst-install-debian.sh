@@ -2,11 +2,30 @@
 
 # ======================================================== #
 #
-# Hestia Control Panel Installer for Debian
-# https://www.hestiacp.com/
+# VylarisSpace Installer for Debian
+# VylarisGroupEurope
 #
 # Currently Supported Versions:
 # Debian 12 13
+#
+# ======================================================== #
+
+# ======================================================== #
+#
+# IMPORTANT: PACKAGE SOURCE - NOT FOR PRODUCTION YET
+#
+# This installer still installs the hestia, hestia-nginx, hestia-php
+# and hestia-web-terminal packages from the UPSTREAM HestiaCP apt
+# repository (RHOST below). Those upstream packages replace the
+# VylarisSpace interface with the upstream one and are not under
+# the control of VylarisGroupEurope.
+#
+# Do NOT use this installer on production servers until the own
+# VylarisSpace package repository exists (see VYLARIS-PACKAGING.md),
+# unless --with-debs points to VylarisSpace packages.
+#
+# Apt source setup, RHOST, package installation and the install
+# version check are intentionally unchanged here (Phase 4).
 #
 # ======================================================== #
 
@@ -15,6 +34,14 @@
 #----------------------------------------------------------#
 export PATH=$PATH:/sbin
 export DEBIAN_FRONTEND=noninteractive
+# Product and company name shown to the administrator
+PRODUCT_NAME='VylarisSpace'
+COMPANY_NAME='VylarisGroupEurope'
+# Upstream update channels (apt.hestiacp.com, GitHub) must not run on a
+# VylarisSpace server: they would replace this fork with upstream HestiaCP.
+# Written to hestia.conf as UPSTREAM_UPDATES. Only switch to 'yes' once RHOST
+# points to the own VylarisSpace package repository (see VYLARIS-PACKAGING.md).
+upstream_updates='no'
 RHOST='apt.hestiacp.com'
 VERSION='debian'
 HESTIA='/usr/local/hestia'
@@ -50,7 +77,7 @@ case "$os" in
 		os_id="debian${release}"
 		;;
 	*)
-		echo "Error: unsupported distribution for determining Hestia version ($os)"
+		echo "Error: unsupported distribution for determining package version ($os)"
 		exit 1
 		;;
 esac
@@ -111,11 +138,11 @@ help() {
   -e, --email             Set admin email
   -u, --username          Set admin user
   -p, --password          Set admin password
-  -D, --with-debs         Path to Hestia debs
+  -D, --with-debs         Path to VylarisSpace debs
   -f, --force             Force installation
   -h, --help              Print this help
 
-  Example: bash $0 -e demo@hestiacp.com -p p4ssw0rd --multiphp yes"
+  Example: bash $0 -e admin@example.com -p p4ssw0rd --multiphp yes"
 	exit 1
 }
 
@@ -192,6 +219,66 @@ write_config_value() {
 	local key="$1"
 	local value="$2"
 	echo "$key='$value'" >> $HESTIA/conf/hestia.conf
+}
+
+# Print a line centered on an 72 column screen
+print_centered() {
+	printf "%*s\n" $(((72 + ${#1}) / 2)) "$1"
+}
+
+# Warn when packages still come from the upstream HestiaCP repository (Phase 4)
+print_upstream_repo_warning() {
+	if [ "$RHOST" = 'apt.hestiacp.com' ]; then
+		echo -e "\e[91mWARNING: packages are fetched from the upstream HestiaCP repository; the VylarisSpace interface is replaced by the upstream one unless --with-debs points to VylarisSpace packages\e[0m"
+	fi
+}
+
+# Check whether a string is a public (globally routable) IPv4 address
+is_public_ipv4() {
+	local a b c d extra octet
+	IFS=. read -r a b c d extra <<< "$1"
+	[ -z "$extra" ] || return 1
+	for octet in "$a" "$b" "$c" "$d"; do
+		[[ "$octet" =~ ^[0-9]{1,3}$ ]] || return 1
+		[ "$((10#$octet))" -le 255 ] || return 1
+	done
+	a=$((10#$a))
+	b=$((10#$b))
+	c=$((10#$c))
+	# this-network, private, loopback, link-local, CGNAT, benchmarking, documentation,
+	# multicast and reserved ranges are not public
+	[ "$a" -eq 0 ] && return 1
+	[ "$a" -eq 10 ] && return 1
+	[ "$a" -eq 127 ] && return 1
+	[ "$a" -ge 224 ] && return 1
+	[ "$a" -eq 100 ] && [ "$b" -ge 64 ] && [ "$b" -le 127 ] && return 1
+	[ "$a" -eq 169 ] && [ "$b" -eq 254 ] && return 1
+	[ "$a" -eq 172 ] && [ "$b" -ge 16 ] && [ "$b" -le 31 ] && return 1
+	[ "$a" -eq 192 ] && [ "$b" -eq 168 ] && return 1
+	[ "$a" -eq 192 ] && [ "$b" -eq 0 ] && [ "$c" -le 2 ] && return 1
+	[ "$a" -eq 198 ] && [ "$b" -ge 18 ] && [ "$b" -le 19 ] && return 1
+	[ "$a" -eq 198 ] && [ "$b" -eq 51 ] && [ "$c" -eq 100 ] && return 1
+	[ "$a" -eq 203 ] && [ "$b" -eq 0 ] && [ "$c" -eq 113 ] && return 1
+	return 0
+}
+
+# Detect the public IPv4 address of this server
+# 1. If the address of the default-route interface is already public, use it
+#    (no network request, nothing leaves the server).
+# 2. Otherwise (NAT, cloud one-to-one mapping) ask a neutral third party echo
+#    service, which only sees the source address of the request.
+get_public_ipv4() {
+	local local_addr="$1"
+	local detected
+	if is_public_ipv4 "$local_addr"; then
+		echo "$local_addr"
+		return 0
+	fi
+	detected="$(curl -fsLm5 --retry 2 --ipv4 https://api.ipify.org 2> /dev/null)"
+	if is_public_ipv4 "$detected"; then
+		echo "$detected"
+	fi
+	return 0
 }
 
 # Sort configuration file values
@@ -448,7 +535,7 @@ if [ "x$(id -u)" != 'x0' ]; then
 fi
 
 if [ -d "/usr/local/hestia" ]; then
-	check_result 1 "Hestia install detected. Unable to continue"
+	check_result 1 "$PRODUCT_NAME install detected. Unable to continue"
 fi
 
 type=$(grep "^ID=" /etc/os-release | cut -f 2 -d '=')
@@ -467,8 +554,9 @@ if [ ! -f /etc/apt/apt.conf.d/80-retries ]; then
 fi
 
 # Welcome message
-echo "Welcome to the Hestia Control Panel installer!"
+echo "Welcome to the $PRODUCT_NAME installer!"
 echo
+print_upstream_repo_warning
 echo "Please wait, the installer is now checking for missing dependencies..."
 echo
 
@@ -492,7 +580,7 @@ fi
 
 # Check repository availability
 wget --quiet "https://$RHOST" -O /dev/null
-check_result $? "Unable to connect to the Hestia APT repository"
+check_result $? "Unable to connect to the APT repository ($RHOST)"
 
 # Check installed packages
 tmpfile=$(mktemp -p /tmp)
@@ -526,7 +614,7 @@ if [ -n "$conflicts" ] && [ -z "$force" ]; then
 		check_result $? 'apt-get remove failed'
 		unset $answer
 	else
-		check_result 1 "Hestia Control Panel should be installed on a clean server."
+		check_result 1 "$PRODUCT_NAME should be installed on a clean server."
 	fi
 fi
 
@@ -600,8 +688,6 @@ case $architecture in
 		echo -e "\e[33mERROR: $architecture is currently not supported!\e[0m"
 		echo -e "\e[33mPlease verify the achitecture used is currenlty supported\e[0m"
 		echo ""
-		echo -e "\e[33mhttps://github.com/hestiacp/hestiacp/blob/main/README.md\e[0m"
-		echo ""
 		check_result 1 "Installation aborted"
 		;;
 esac
@@ -613,13 +699,9 @@ esac
 install_welcome_message() {
 	DISPLAY_VER=$(echo $HESTIA_INSTALL_VER | sed "s|~alpha||g" | sed "s|~beta||g" | sed "s|~rc[0-9]*||g")
 	echo
-	echo '                _   _           _   _        ____ ____                  '
-	echo '               | | | | ___  ___| |_(_) __ _ / ___|  _ \                 '
-	echo '               | |_| |/ _ \/ __| __| |/ _` | |   | |_) |                '
-	echo '               |  _  |  __/\__ \ |_| | (_| | |___|  __/                 '
-	echo '               |_| |_|\___||___/\__|_|\__,_|\____|_|                    '
-	echo "                                                                        "
-	echo "                          Hestia Control Panel                          "
+	print_centered "$PRODUCT_NAME"
+	print_centered "$COMPANY_NAME"
+	echo
 	if [[ "$HESTIA_INSTALL_VER" =~ "rc" ]]; then
 		echo "                             RELEASE CANDIDATE                      "
 	fi
@@ -632,18 +714,19 @@ install_welcome_message() {
 		echo "                          USE AT YOUR OWN RISK                      "
 	fi
 	echo "                                  ${DISPLAY_VER}                        "
-	echo "                            www.hestiacp.com                            "
 	echo
 	echo "========================================================================"
 	echo
-	echo "Thank you for downloading Hestia Control Panel! In a few moments,"
+	echo "Thank you for choosing $PRODUCT_NAME! In a few moments,"
 	echo "we will begin installing the following components on your server:"
 	echo
 }
 
-# Printing nice ASCII logo
+# Printing the welcome banner
 clear
 install_welcome_message
+print_upstream_repo_warning
+echo
 
 # Web stack
 echo '   - NGINX Web / Proxy Server'
@@ -927,7 +1010,7 @@ if [ "$mysql8" = 'yes' ]; then
 fi
 
 # Installing HestiaCP repo
-echo "[ * ] Hestia Control Panel"
+echo "[ * ] $PRODUCT_NAME package repository"
 echo "deb [arch=$ARCH signed-by=/usr/share/keyrings/hestia-keyring.gpg] https://$RHOST/ $codename main" > $apt/hestia.list
 curl -s "https://$RHOST/pubkey.gpg" | gpg --dearmor | tee /usr/share/keyrings/hestia-keyring.gpg > /dev/null 2>&1
 
@@ -1324,7 +1407,7 @@ fi
 #                     Configure Hestia                     #
 #----------------------------------------------------------#
 
-echo "[ * ] Configuring Hestia Control Panel..."
+echo "[ * ] Configuring $PRODUCT_NAME..."
 # Installing sudo configuration
 mkdir -p /etc/sudoers.d
 cp -f $HESTIA_COMMON_DIR/sudo/hestiaweb /etc/sudoers.d/
@@ -1480,8 +1563,19 @@ write_config_value "LANGUAGE" "$lang"
 # Login screen style
 write_config_value "LOGIN_STYLE" "default"
 
+# Product name (panel title, e-mails, 2FA issuer, File Manager title)
+# Written here, not left to syshealth: the File Manager is installed before
+# syshealth runs and reads APP_NAME from hestia.conf for its title
+write_config_value "APP_NAME" "$PRODUCT_NAME"
+
 # Theme
 write_config_value "THEME" "vylaris"
+
+# Hide links to documentation
+write_config_value "HIDE_DOCS" "yes"
+
+# Upstream update channels (apt.hestiacp.com, GitHub) are disabled
+write_config_value "UPSTREAM_UPDATES" "$upstream_updates"
 
 # Inactive session timeout
 write_config_value "INACTIVE_SESSION_TIMEOUT" "60"
@@ -1563,7 +1657,7 @@ fi
 # Generating SSL certificate
 echo "[ * ] Generating default self-signed SSL certificate..."
 $HESTIA/bin/v-generate-ssl-cert $(hostname) '' 'US' 'California' \
-	'San Francisco' 'Hestia Control Panel' 'IT' > /tmp/hst.pem
+	'San Francisco' "$PRODUCT_NAME" 'IT' > /tmp/hst.pem
 
 crt_end=$(grep -n "END CERTIFICATE-" /tmp/hst.pem | head -n1 | cut -f 1 -d:)
 # Newer OpenSSL may emit BEGIN PRIVATE KEY while older flows emit BEGIN RSA PRIVATE KEY.
@@ -1579,7 +1673,7 @@ check_result $(
 ) "failed to parse generated SSL certificate"
 
 # Adding SSL certificate
-echo "[ * ] Adding SSL certificate to Hestia Control Panel..."
+echo "[ * ] Adding SSL certificate to $PRODUCT_NAME..."
 cd $HESTIA/ssl
 sed -n "1,${crt_end}p" /tmp/hst.pem > certificate.crt
 sed -n "$key_start,${key_end}p" /tmp/hst.pem > certificate.key
@@ -2396,7 +2490,7 @@ if [ "$iptables" = 'yes' ]; then
 fi
 
 # Get public IP
-pub_ipv4="$(curl -fsLm5 --retry 2 --ipv4 https://ip.hestiacp.com/)"
+pub_ipv4="$(get_public_ipv4 "$primary_ipv4")"
 if [ -n "$pub_ipv4" ] && [ "$pub_ipv4" != "$ip" ]; then
 	if [ -e /etc/rc.local ]; then
 		sed -i '/exit 0/d' /etc/rc.local
@@ -2464,13 +2558,20 @@ echo "10 05 * * * sudo /usr/local/hestia/bin/v-backup-users" >> /var/spool/cron/
 echo "20 00 * * * sudo /usr/local/hestia/bin/v-update-user-stats" >> /var/spool/cron/crontabs/hestiaweb
 echo "*/5 * * * * sudo /usr/local/hestia/bin/v-update-sys-rrd" >> /var/spool/cron/crontabs/hestiaweb
 echo "$min $hour * * * sudo /usr/local/hestia/bin/v-update-letsencrypt-ssl" >> /var/spool/cron/crontabs/hestiaweb
-echo "41 4 * * * sudo /usr/local/hestia/bin/v-update-sys-hestia-all" >> /var/spool/cron/crontabs/hestiaweb
+# The daily upstream update job (v-update-sys-hestia-all) is only installed
+# when upstream updates are enabled: it would replace VylarisSpace with the
+# upstream HestiaCP packages.
+if [ "$upstream_updates" = 'yes' ]; then
+	echo "41 4 * * * sudo /usr/local/hestia/bin/v-update-sys-hestia-all" >> /var/spool/cron/crontabs/hestiaweb
+fi
 
 chmod 600 /var/spool/cron/crontabs/hestiaweb
 chown hestiaweb:hestiaweb /var/spool/cron/crontabs/hestiaweb
 
-# Enable automatic updates
-$HESTIA/bin/v-add-cron-hestia-autoupdate apt
+# Enable automatic updates (only from an own package source, see above)
+if [ "$upstream_updates" = 'yes' ]; then
+	$HESTIA/bin/v-add-cron-hestia-autoupdate apt
+fi
 
 # Building initial rrd images
 $HESTIA/bin/v-update-sys-rrd
@@ -2561,7 +2662,7 @@ echo -e "\n"
 # Sending notification to admin email
 echo -e "Congratulations!
 
-You have successfully installed Hestia Control Panel on your server.
+You have successfully installed $PRODUCT_NAME on your server.
 
 Ready to get started? Log in using the following credentials:
 
@@ -2572,31 +2673,15 @@ fi
 echo -e -n " 	Username:   $username
 	Password:   $displaypass
 
-Thank you for choosing Hestia Control Panel to power your full stack web server,
-we hope that you enjoy using it as much as we do!
-
-Please feel free to contact us at any time if you have any questions,
-or if you encounter any bugs or problems:
-
-Documentation:  https://docs.hestiacp.com/
-Forum:          https://forum.hestiacp.com/
-GitHub:         https://www.github.com/hestiacp/hestiacp
-
-Note: Automatic updates are enabled by default. If you would like to disable them,
-please log in and navigate to Server > Updates to turn them off.
-
-Help support the Hestia Control Panel project by donating via PayPal:
-https://www.hestiacp.com/donate
+Thank you for choosing $PRODUCT_NAME to power your full stack web server.
 
 --
 Sincerely yours,
-The Hestia Control Panel development team
-
-Made with love & pride by the open-source community around the world.
+$COMPANY_NAME
 " >> $tmpfile
 
 send_mail="$HESTIA/web/inc/mail-wrapper.php"
-cat $tmpfile | $send_mail -s "Hestia Control Panel" $email
+cat $tmpfile | $send_mail -s "$PRODUCT_NAME" $email
 
 # Congrats
 echo
@@ -2604,7 +2689,7 @@ cat $tmpfile
 rm -f $tmpfile
 
 # Add welcome message to notification panel
-$HESTIA/bin/v-add-user-notification "$username" 'Welcome to Hestia Control Panel!' '<p>You are now ready to begin adding <a href="/add/user/">user accounts</a> and <a href="/add/web/">domains</a>. For help and assistance, <a href="https://hestiacp.com/docs/" target="_blank">view the documentation</a> or <a href="https://forum.hestiacp.com/" target="_blank">visit our forum</a>.</p><p>Please <a href="https://github.com/hestiacp/hestiacp/issues" target="_blank">report any issues via GitHub</a>.</p><p class="u-text-bold">Have a wonderful day!</p><p><i class="fas fa-heart icon-red"></i> The Hestia Control Panel development team</p>'
+$HESTIA/bin/v-add-user-notification "$username" "Welcome to $PRODUCT_NAME!" '<p>You are now ready to begin adding <a href="/add/user/">user accounts</a> and <a href="/add/web/">domains</a>.</p><p class="u-text-bold">Have a wonderful day!</p><p>'"$COMPANY_NAME"'</p>'
 
 # Clean-up
 # Sort final configuration file

@@ -33,6 +33,12 @@ check_hestia_demo_mode
 check_args '2' "$#" 'KEY VALUE'
 is_common_format_valid "$key" 'key'
 format_no_quotes "$value" 'value'
+
+# UPSTREAM_UPDATES switches the upstream update channels on or off
+if [ "$key" = "UPSTREAM_UPDATES" ]; then
+	is_boolean_format_valid "$value" 'UPSTREAM_UPDATES'
+fi
+
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#

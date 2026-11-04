@@ -4,6 +4,7 @@
 <?php if (
 	$_SESSION["userContext"] === "admin" &&
 	$_SESSION["POLICY_SYSTEM_HIDE_SERVICES"] !== "yes" &&
+	($_SESSION["UPSTREAM_UPDATES"] ?? "no") === "yes" &&
 	$_SESSION["UPDATE_AVAILABLE"] === "yes"
 ) {
 ?>

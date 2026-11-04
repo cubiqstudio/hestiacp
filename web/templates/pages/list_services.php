@@ -8,9 +8,11 @@
 			<a href="/list/rrd/" class="button button-secondary">
 				<i class="fas fa-chart-area icon-blue"></i><?= tohtml( _("Task Monitor")) ?>
 			</a>
-			<a href="/list/updates/" class="button button-secondary">
-				<i class="fas fa-arrows-rotate icon-green"></i><?= tohtml( _("Updates")) ?>
-			</a>
+			<?php if (($_SESSION["UPSTREAM_UPDATES"] ?? "no") === "yes") { ?>
+				<a href="/list/updates/" class="button button-secondary">
+					<i class="fas fa-arrows-rotate icon-green"></i><?= tohtml( _("Updates")) ?>
+				</a>
+			<?php } ?>
 			<?php if (!empty($_SESSION["FIREWALL_SYSTEM"]) && $_SESSION["FIREWALL_SYSTEM"] == "iptables") { ?>
 				<a href="/list/firewall/" class="button button-secondary">
 					<i class="fas fa-shield-halved icon-red"></i><?= tohtml( _("Firewall")) ?>
@@ -56,7 +58,7 @@
 			<h1 class="server-summary-title"><?= tohtml($sys["sysinfo"]["HOSTNAME"]) ?></h1>
 			<ul class="server-summary-list">
 				<li class="server-summary-item">
-					<span class="server-summary-list-label">VylarisSpace</span>
+					<span class="server-summary-list-label"><?= tohtml($_SESSION["APP_NAME"] ?? "VylarisSpace") ?></span>
 					<span class="server-summary-list-value">
 						<?php if ($sys["sysinfo"]["RELEASE"] == "release") { ?>
 							<i class="fas fa-cube" title="<?= tohtml( _("Production Release")) ?>"></i>

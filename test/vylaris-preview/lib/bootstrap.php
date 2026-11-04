@@ -120,7 +120,14 @@ namespace {
 	// tohtml() is declared inside an `if (!function_exists())` block, hence the extra depth.
 	preview_import_functions(
 		HESTIA_ROOT . "/web/inc/helpers.php",
-		["tohtml", "theme_display_name"],
+		[
+			"tohtml",
+			"theme_display_name",
+			"docs_url",
+			"legacy_themes",
+			"visible_themes",
+			"resolve_theme",
+		],
 		1,
 	);
 	preview_import_functions(HESTIA_ROOT . "/web/inc/main.php", [
@@ -227,7 +234,7 @@ namespace {
 			"RELEASE_BRANCH" => "release",
 			"DEBUG_MODE" => "false",
 			"DEMO_MODE" => "no",
-			"HIDE_DOCS" => "no",
+			"HIDE_DOCS" => "yes",
 			"UPDATE_AVAILABLE" => "no",
 			"LOGIN_STYLE" => "default",
 			// Installed services

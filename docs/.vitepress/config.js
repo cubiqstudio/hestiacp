@@ -3,12 +3,10 @@ import { version } from '../../package.json';
 
 export default defineConfig({
 	lang: 'en-US',
-	title: 'Hestia Control Panel',
-	description: 'Open-source web server control panel.',
+	title: 'VylarisSpace',
+	description: 'Documentation for the VylarisSpace web server control panel.',
 
-	sitemap: {
-		hostname: 'https://hestiacp.com',
-	},
+	srcExclude: ['README.md'],
 
 	lastUpdated: true,
 	cleanUrls: false,
@@ -26,30 +24,14 @@ export default defineConfig({
 
 		nav: nav(),
 
-		socialLinks: [
-			{ icon: 'github', link: 'https://github.com/hestiacp/hestiacp' },
-			{ icon: 'twitter', link: 'https://twitter.com/HestiaPanel' },
-			{ icon: 'facebook', link: 'https://www.facebook.com/hestiacp' },
-		],
-
 		sidebar: { '/docs/': sidebarDocs() },
 
 		outline: [2, 3],
 
-		editLink: {
-			pattern: 'https://github.com/hestiacp/hestiacp/edit/main/docs/:path',
-			text: 'Edit this page on GitHub',
-		},
-
 		footer: {
 			message: 'Released under the GPLv3 License.',
-			copyright: 'Copyright © 2019-present Hestia Control Panel',
-		},
-
-		algolia: {
-			appId: 'V04P0P5D2R',
-			apiKey: '7a90a3ac7f9313f174c50b0f301f7ec6',
-			indexName: 'hestia_cp',
+			copyright:
+				'Copyright © 2019-present Hestia Control Panel contributors and VylarisGroupEurope',
 		},
 	},
 });
@@ -60,27 +42,7 @@ function nav() {
 		{ text: 'Features', link: '/features' },
 		{ text: 'Install', link: '/install' },
 		{ text: 'Documentation', link: '/docs/introduction/getting-started', activeMatch: '/docs/' },
-		{ text: 'Team', link: '/team' },
-		{ text: 'Demo', link: 'https://demo.hestiacp.com:8083/' },
-		{ text: 'Forum', link: 'https://forum.hestiacp.com/' },
-		{ text: 'Donate', link: '/donate' },
-		{
-			text: `v${version}`,
-			items: [
-				{
-					text: 'Changelog',
-					link: 'https://github.com/hestiacp/hestiacp/blob/release/CHANGELOG.md',
-				},
-				{
-					text: 'Contributing',
-					link: 'https://github.com/hestiacp/hestiacp/blob/release/CONTRIBUTING.md',
-				},
-				{
-					text: 'Security policy',
-					link: 'https://github.com/hestiacp/hestiacp/blob/release/SECURITY.md',
-				},
-			],
-		},
+		{ text: `v${version}`, link: '/docs/introduction/getting-started' },
 	];
 }
 /** @returns {import("vitepress").DefaultTheme.SidebarItem[]} */

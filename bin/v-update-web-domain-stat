@@ -84,9 +84,9 @@ build_awstats() {
 		mkdir -p $dir/$month
 	fi
 
-	# Logo check
-	if [ ! -e "$dir/logo.svg" ]; then
-		cp -r $HESTIA/web/images/logo.svg $dir/
+	# Logo check (copy if missing or if the panel logo has changed)
+	if [ ! -e "$dir/logo.svg" ] || ! cmp -s "$HESTIA/web/images/logo.svg" "$dir/logo.svg"; then
+		cp -f $HESTIA/web/images/logo.svg $dir/
 	fi
 
 	# Icon directory check

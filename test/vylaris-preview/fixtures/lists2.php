@@ -163,10 +163,10 @@ function fx_auth_log(): array {
 function fx_updates(): array {
 	$data = [];
 	$rows = [
-		["hestia", "Hestia Control Panel - core package", "1.10.5", "yes"],
-		["hestia-nginx", "Hestia Control Panel - nginx web server", "1.27.2", "no"],
-		["hestia-php", "Hestia Control Panel - php backend", "8.3.14", "yes"],
-		["hestia-web-terminal", "Hestia Web Terminal", "1.0.2", "no"],
+		["hestia", "VylarisSpace core package", "1.10.5", "yes"],
+		["hestia-nginx", "VylarisSpace internal web server", "1.27.2", "no"],
+		["hestia-php", "VylarisSpace internal php interpreter", "8.3.14", "yes"],
+		["hestia-web-terminal", "VylarisSpace web terminal", "1.0.2", "no"],
 	];
 	foreach ($rows as [$pkg, $descr, $version, $updated]) {
 		$data[$pkg] = [

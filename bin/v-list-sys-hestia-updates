@@ -74,10 +74,16 @@ shell_list() {
 #                       Action                             #
 #----------------------------------------------------------#
 
-# Checking official latest version
-hestia_v=$(apt-cache policy hestia | grep Candidate | cut -d ':' -f 2 | xargs)
-nginx_v=$(apt-cache policy hestia-nginx | grep Candidate | cut -d ':' -f 2 | xargs)
-php_v=$(apt-cache policy hestia-php | grep Candidate | cut -d ':' -f 2 | xargs)
+# Checking official latest version (only against the upstream package source when
+# UPSTREAM_UPDATES='yes'; otherwise the installed versions are reported as current)
+hestia_v=''
+nginx_v=''
+php_v=''
+if [ "${UPSTREAM_UPDATES:-no}" = "yes" ]; then
+	hestia_v=$(apt-cache policy hestia | grep Candidate | cut -d ':' -f 2 | xargs)
+	nginx_v=$(apt-cache policy hestia-nginx | grep Candidate | cut -d ':' -f 2 | xargs)
+	php_v=$(apt-cache policy hestia-php | grep Candidate | cut -d ':' -f 2 | xargs)
+fi
 
 # Checking installed hestia version
 check_installed_deb hestia
@@ -88,7 +94,7 @@ if [ -n "$hestia_v" ] && [ "$hestia_v" \> "$VERSION" ]; then
 fi
 
 data="NAME='hestia' VERSION='$VERSION' ARCH='$ARCH'"
-data="$data UPDATED='$UPDATED' DESCR='Hestia core package' TIME='$TIME' DATE='$DATE'"
+data="$data UPDATED='$UPDATED' DESCR='VylarisSpace core package' TIME='$TIME' DATE='$DATE'"
 
 # Checking installed hestia-php version
 check_installed_deb hestia-php
@@ -99,7 +105,7 @@ if [ -n "$php_v" ] && [ "$php_v" \> "$VERSION" ]; then
 fi
 
 data="$data\nNAME='hestia-php' VERSION='$VERSION'"
-data="$data ARCH='$ARCH' UPDATED='$UPDATED' DESCR='Hestia internal php interpreter'"
+data="$data ARCH='$ARCH' UPDATED='$UPDATED' DESCR='VylarisSpace internal PHP interpreter'"
 data="$data TIME='$TIME' DATE='$DATE'"
 
 # Checking installed hestia-nginx version
@@ -111,7 +117,7 @@ if [ -n "$nginx_v" ] && [ "$nginx_v" \> "$VERSION" ]; then
 fi
 
 data="$data\nNAME='hestia-nginx' VERSION='$VERSION'"
-data="$data ARCH='$ARCH' UPDATED='$UPDATED' DESCR='Hestia internal web server'"
+data="$data ARCH='$ARCH' UPDATED='$UPDATED' DESCR='VylarisSpace internal web server'"
 data="$data TIME='$TIME' DATE='$DATE'"
 
 # Listing data

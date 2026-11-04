@@ -18,6 +18,13 @@ source $HESTIA/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
+# Upstream update channels (apt.hestiacp.com, GitHub) would replace this fork with
+# upstream HestiaCP. They stay off unless UPSTREAM_UPDATES='yes' is set in hestia.conf.
+if [ "${UPSTREAM_UPDATES:-no}" != "yes" ]; then
+	echo "Upstream updates are disabled (UPSTREAM_UPDATES=no) - VylarisSpace is updated through its own package source."
+	exit 0
+fi
+
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 

@@ -87,7 +87,7 @@ if [[ "$dovecot_version" = "2.4" ]]; then
 			systemctl status dovecot --no-pager -l >&2
 		fi
 	else
-		echo "[ - ] Dovecot already configured by Hestia, nothing to do"
+		echo "[ - ] Dovecot already configured, nothing to do"
 	fi
 elif [[ "$dovecot_version" = "false" ]]; then
 	echo "[ - ] Dovecot not installed, skipping"

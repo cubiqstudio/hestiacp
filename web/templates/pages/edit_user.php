@@ -163,12 +163,10 @@
 				<label for="v_user_theme" class="form-label"><?= tohtml( _("Theme")) ?></label>
 				<select class="form-select" name="v_user_theme" id="v_user_theme">
 					<?php
+						$selected_user_theme = resolve_theme(!empty($v_user_theme) ? $v_user_theme : ($_SESSION["THEME"] ?? ""));
 						foreach ($themes as $key => $value) {
-							echo "\t\t\t\t<option value=\"".$value."\"";
-							if ((!empty($_SESSION['userTheme'])) && ( $value == $v_user_theme )) {
-								echo ' selected' ;
-							}
-							if ((empty($v_user_theme) && (!empty($_SESSION['THEME']))) && ( $value == $_SESSION['THEME'] )) {
+							echo "\t\t\t\t<option value=\"".tohtml($value)."\"";
+							if ($value == $selected_user_theme) {
 								echo ' selected' ;
 							}
 							echo ">".tohtml(theme_display_name($value))."</option>\n";

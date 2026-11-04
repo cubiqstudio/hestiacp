@@ -225,6 +225,33 @@ function syshealth_update_system_config_format() {
 	unset known_keys
 }
 
+# Migrate the untouched upstream product name to the VylarisSpace one
+# Existing installs carry APP_NAME='Hestia Control Panel' from the upstream installer.
+# A name that was customized by the administrator is left alone.
+function syshealth_migrate_app_name() {
+	local current_app_name
+	current_app_name=$(grep -e "^APP_NAME=" "$HESTIA/conf/hestia.conf" | head -n1 | cut -d "'" -f2)
+	if [ "$current_app_name" = "Hestia Control Panel" ]; then
+		echo "[ ! ] Replacing upstream product name in hestia.conf: APP_NAME ('Hestia Control Panel' -> 'VylarisSpace')"
+		$BIN/v-change-sys-config-value "APP_NAME" "VylarisSpace"
+		$BIN/v-log-action "system" "Info" "System" "Product name changed from the upstream default to VylarisSpace."
+	fi
+}
+
+# Make sure the upstream update switch exists and is off when it is added
+# Existing installs may still have the automatic update cron job that runs the
+# upstream update, it is removed together with adding the key (one time only).
+function syshealth_migrate_upstream_updates() {
+	if [[ -z $(grep -e "^UPSTREAM_UPDATES=" "$HESTIA/conf/hestia.conf") ]]; then
+		echo "[ ! ] Adding missing variable to hestia.conf: UPSTREAM_UPDATES ('no')"
+		$BIN/v-change-sys-config-value "UPSTREAM_UPDATES" "no"
+		if grep -q 'v-update-sys-hestia-\(all\|git\)' /var/spool/cron/crontabs/hestiaweb 2> /dev/null; then
+			echo "[ ! ] Removing the automatic upstream update cron job"
+			$BIN/v-delete-cron-hestia-autoupdate > /dev/null 2>&1
+		fi
+	fi
+}
+
 # Restore System Configuration
 # Replaces $HESTIA/conf/hestia.conf with "known good defaults" file ($HESTIA/conf/defaults/hestia.conf)
 function syshealth_restore_system_config() {
@@ -232,6 +259,9 @@ function syshealth_restore_system_config() {
 		mv $HESTIA/conf/hestia.conf $HESTIA/conf/hestia.conf.old
 		cp $HESTIA/conf/defaults/hestia.conf $HESTIA/conf/hestia.conf
 		rm -f $HESTIA/conf/hestia.conf.old
+		# Snapshots taken on older installs must not bring back the upstream defaults
+		syshealth_migrate_app_name
+		syshealth_migrate_upstream_updates
 	else
 		echo "ERROR: System default configuration file not found, aborting."
 		exit 1
@@ -282,8 +312,8 @@ function syshealth_repair_system_config() {
 
 	# Theme
 	if [[ -z $(check_key_exists 'THEME') ]]; then
-		echo "[ ! ] Adding missing variable to hestia.conf: THEME ('dark')"
-		$BIN/v-change-sys-config-value 'THEME' 'dark'
+		echo "[ ! ] Adding missing variable to hestia.conf: THEME ('vylaris')"
+		$BIN/v-change-sys-config-value 'THEME' 'vylaris'
 	fi
 
 	# Default language
@@ -514,9 +544,10 @@ function syshealth_repair_system_config() {
 		$BIN/v-change-sys-config-value "DISABLE_IP_CHECK" "no"
 	fi
 	if [[ -z $(check_key_exists 'APP_NAME') ]]; then
-		echo "[ ! ] Adding missing variable to hestia.conf: APP_NAME ('Hestia Control Panel')"
-		$BIN/v-change-sys-config-value "APP_NAME" "Hestia Control Panel"
+		echo "[ ! ] Adding missing variable to hestia.conf: APP_NAME ('VylarisSpace')"
+		$BIN/v-change-sys-config-value "APP_NAME" "VylarisSpace"
 	fi
+	syshealth_migrate_app_name
 	if [[ -z $(check_key_exists 'FROM_NAME') ]]; then
 		# Default is always APP_NAME
 		echo "[ ! ] Adding missing variable to hestia.conf: FROM_NAME ('')"
@@ -543,9 +574,13 @@ function syshealth_repair_system_config() {
 	fi
 
 	if [[ -z $(check_key_exists 'HIDE_DOCS') ]]; then
-		echo "[ ! ] Adding missing variable to hestia.conf: HIDE_DOCS ('no')"
-		$BIN/v-change-sys-config-value "HIDE_DOCS" "no"
+		echo "[ ! ] Adding missing variable to hestia.conf: HIDE_DOCS ('yes')"
+		$BIN/v-change-sys-config-value "HIDE_DOCS" "yes"
 	fi
+
+	# Upstream update channels (apt.hestiacp.com, GitHub) would replace this fork
+	# with upstream HestiaCP, they stay off unless explicitly enabled
+	syshealth_migrate_upstream_updates
 
 	if [[ -z $(check_key_exists 'POLICY_SYNC_ERROR_DOCUMENTS') ]]; then
 		echo "[ ! ] Adding missing variable to hestia.conf: POLICY_SYNC_ERROR_DOCUMENTS ('yes')"
@@ -612,7 +647,10 @@ function syshealth_repair_system_cronjobs() {
 	echo "20 00 * * * sudo /usr/local/hestia/bin/v-update-user-stats" >> /var/spool/cron/crontabs/hestiaweb
 	echo "*/5 * * * * sudo /usr/local/hestia/bin/v-update-sys-rrd" >> /var/spool/cron/crontabs/hestiaweb
 	echo "$min $hour * * * sudo /usr/local/hestia/bin/v-update-letsencrypt-ssl" >> /var/spool/cron/crontabs/hestiaweb
-	echo "41 4 * * * sudo /usr/local/hestia/bin/v-update-sys-hestia-all" >> /var/spool/cron/crontabs/hestiaweb
+	# Daily upstream update job, only installed when upstream updates are enabled
+	if [ "${UPSTREAM_UPDATES:-no}" = "yes" ]; then
+		echo "41 4 * * * sudo /usr/local/hestia/bin/v-update-sys-hestia-all" >> /var/spool/cron/crontabs/hestiaweb
+	fi
 }
 
 # Adapt Port Listing in HESTIA NGINX Backend

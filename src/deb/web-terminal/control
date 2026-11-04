@@ -7,8 +7,8 @@ Maintainer: HestiaCP <info@hestiacp.com>
 Homepage: https://www.hestiacp.com
 Architecture: amd64
 Depends: hestia, nodejs (>= 20.0.0)
-Description: hestia web terminal
- hestia is an open source hosting control panel.
- hestia has a clean and focused interface without the clutter.
- hestia has the latest of very innovative technologies.
- hestia is a fork from VestaCP, special thanks to vestacp.com and Serghey Rodin
+Description: VylarisSpace web terminal
+ VylarisSpace is an open source hosting control panel.
+ VylarisSpace has a clean and focused interface without the clutter.
+ VylarisSpace has the latest of very innovative technologies.
+ VylarisSpace is a modified version of HestiaCP, which is a fork from VestaCP, special thanks to vestacp.com and Serghey Rodin

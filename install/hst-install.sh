@@ -2,9 +2,14 @@
 
 # ======================================================== #
 #
-# Hestia Control Panel Installation Routine
+# VylarisSpace Installation Routine
 # Automatic OS detection wrapper
-# https://www.hestiacp.com/
+# VylarisGroupEurope
+#
+# NOTE: the OS specific installer started from here still installs the
+# hestia packages from the upstream HestiaCP apt repository. Do not use it
+# on production servers until the own VylarisSpace package repository exists
+# (see VYLARIS-PACKAGING.md).
 #
 # Currently Supported Operating Systems:
 #
@@ -65,7 +70,7 @@ fi
 no_support_message() {
 	echo "****************************************************"
 	echo "Your operating system (OS) is not supported by"
-	echo "Hestia Control Panel. Officially supported releases:"
+	echo "VylarisSpace. Officially supported releases:"
 	echo "****************************************************"
 	echo "  Debian 12, 13"
 	echo "  Ubuntu 22.04, 24.04, 26.04 LTS"
@@ -101,6 +106,18 @@ ensure_utf8_locale() {
 ensure_utf8_locale
 
 check_wget_curl() {
+	# Prefer the OS specific installer that ships next to this script
+	if [ -n "${BASH_SOURCE[0]}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+		local_installer="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/hst-install-$type.sh"
+		if [ -f "$local_installer" ]; then
+			bash "$local_installer" "$@"
+			exit
+		fi
+	fi
+
+	# Fallback: download the OS specific installer (still the upstream source, Phase 4)
+	echo -e "\e[91mWARNING: hst-install-$type.sh was not found next to this script and is downloaded from the upstream HestiaCP repository\e[0m"
+
 	# Check wget
 	if [ -e '/usr/bin/wget' ]; then
 		wget -q https://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install-$type.sh -O hst-install-$type.sh

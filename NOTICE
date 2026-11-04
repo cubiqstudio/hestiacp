@@ -1,0 +1,75 @@
+VylarisSpace
+============
+
+VylarisSpace is a modified version of HestiaCP (Hestia Control Panel),
+https://github.com/hestiacp/hestiacp
+Copyright the Hestia Control Panel contributors.
+HestiaCP is licensed under the GNU General Public License, version 3 or (at
+your option) any later version (GPL-3.0-or-later). See the file LICENSE.
+
+HestiaCP in turn is based on VestaCP (https://vestacp.com/), created by
+Serghey Rodin and contributors.
+
+Modifications: Copyright VylarisGroupEurope. The modifications are released
+under the same license, GPL-3.0-or-later.
+
+VylarisSpace is not affiliated with, endorsed by or supported by the HestiaCP
+project.
+
+Name restriction of the original project
+----------------------------------------
+
+The README of the HestiaCP project states that the names "Hestia Control
+Panel" and "HestiaCP" and the Hestia logo are original copyright of
+hestiacp.com and must not be used for redistributed or derived products. For
+this reason VylarisSpace does not use these names or the Hestia logo in its
+user interface, in e-mails sent to customers or in its documentation for
+users. Internal identifiers (program paths, service and user names, command
+names, configuration file names and similar) keep the historic name "hestia"
+so that the system and merges from upstream keep working. Copyright notices and
+license headers of the original authors are kept in the source files.
+
+Third-party components
+----------------------
+
+The components below are shipped in or installed with this repository and keep
+their own licenses. The license named is the one declared by the component's
+own package metadata.
+
+Web interface (npm, see package.json):
+
+- Alpine.js and @alpinejs/collapse (MIT)
+- Chart.js (MIT)
+- xterm.js and its WebGL addon (MIT)
+- Font Awesome Free (code MIT, icons CC-BY-4.0, fonts OFL-1.1)
+- normalize.css (MIT)
+- floating-vue (MIT)
+- check-password-strength (MIT)
+- nanoid (MIT)
+
+Fonts in web/webfonts:
+
+- Inter (SIL Open Font License 1.1, full text in web/webfonts/inter-OFL.txt)
+- Exo and Inconsolata (distributed under the SIL Open Font License by their
+  authors; the license text is not included in this repository yet)
+
+PHP libraries (Composer, see web/inc/composer.json):
+
+- PHPMailer (LGPL-2.1-only)
+- RobThree/TwoFactorAuth (MIT)
+- Bacon QR Code (BSD-2-Clause) and DASPRiD/Enum (BSD-2-Clause)
+- Symfony HtmlSanitizer (MIT) and League URI (MIT)
+- divinity76/cloudflare-ip-validator (Unlicense)
+- hestiacp/phpquoteshellarg (Unlicense)
+
+Web terminal service (src/deb/web-terminal/package.json): node-pty and ws, each
+under the license declared by its package.
+
+File manager: FileGator (MIT), install/deb/filemanager/filegator.
+
+Other software that the installer sets up on a server (for example Nginx,
+Apache HTTP Server, PHP, MariaDB, Exim, Dovecot, Roundcube, phpMyAdmin) is not
+part of this repository and is distributed under its own licenses.
+
+The development tooling (Vite, VitePress, Vitest, Prettier, Biome, Playwright
+and others) is only used to build and test and is not shipped.

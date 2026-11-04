@@ -279,7 +279,7 @@ case "$fstype" in
 
 	*)
 		# Unsupported filesystem
-		echo "Error: Hestia does not support quotas on $fstype filesystem."
+		echo "Error: ${APP_NAME:-VylarisSpace} does not support quotas on $fstype filesystem."
 		log_history "Quota setup failed: $fstype filesystem is not supported."
 		exit "$E_DISK"
 		;;

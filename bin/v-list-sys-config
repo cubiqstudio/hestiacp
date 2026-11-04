@@ -108,6 +108,7 @@ json_list() {
 		"UPDATE_AVAILABLE": "'$UPDATE_AVAILABLE'",
 		"UPGRADE_SEND_EMAIL": "'$UPGRADE_SEND_EMAIL'",
 		"UPGRADE_SEND_EMAIL_LOG": "'$UPGRADE_SEND_EMAIL_LOG'",
+		"UPSTREAM_UPDATES": "'${UPSTREAM_UPDATES:-no}'",
 		"USE_SERVER_SMTP": "'$USE_SERVER_SMTP'",
 		"VERSION": "'$VERSION'",
 		"WEBMAIL_ALIAS": "'$WEBMAIL_ALIAS'",
@@ -236,6 +237,7 @@ shell_list() {
 	echo "Hide System Administator:         $POLICY_SYSTEM_HIDE_ADMIN"
 	echo "Updates: Notify by email:         $UPGRADE_SEND_EMAIL"
 	echo "Updates: Email install log:       $UPGRADE_SEND_EMAIL_LOG"
+	echo "Updates: Upstream channels:       ${UPSTREAM_UPDATES:-no}"
 }
 
 # PLAIN list function

@@ -21,7 +21,7 @@ if (!file_exists("/backup/" . $backup)) {
 	} else {
 		$_SESSION["error_msg"] = implode("<br>", $output);
 		if (empty($_SESSION["error_msg"])) {
-			$_SESSION["error_msg"] = _("Error: Hestia did not return any output.");
+			$_SESSION["error_msg"] = sprintf(_("Error: %s did not return any output."), $_SESSION["APP_NAME"]);
 		}
 	}
 	unset($output);

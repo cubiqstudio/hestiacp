@@ -29,7 +29,7 @@
 		<?php
 			$server_x_data = [
 				"timezone" => $v_timezone ?? "",
-				"theme" => $_SESSION["THEME"],
+				"theme" => resolve_theme($_SESSION["THEME"]),
 				"language" => $_SESSION["LANGUAGE"],
 				"hasSmtpRelay" => $v_smtp_relay == "true",
 				"remoteBackupEnabled" => !empty($v_backup_remote_adv),
@@ -522,14 +522,16 @@
 							<div class="u-mb10">
 								<label for="v_phpmyadmin_key" class="form-label">
 									<?= tohtml( _("phpMyAdmin Single Sign On")) ?>
-									<span class="hint">
-										<a
-											href="https://hestiacp.com/docs/server-administration/databases.html"
-											target="_blank"
-										>
-											(<?= tohtml( _("More info")) ?>)
-										</a>
-									</span>
+									<?php if (docs_url() !== "") { ?>
+										<span class="hint">
+											<a
+												href="<?= tohtml(docs_url("server-administration/databases.html")) ?>"
+												target="_blank"
+											>
+												(<?= tohtml( _("More info")) ?>)
+											</a>
+										</span>
+									<?php } ?>
 								</label>
 								<select
 									class="form-select"
@@ -547,9 +549,9 @@
 							</div>
 							<div class="u-mb10">
 								<label for="v_pma_restrict" class="form-label">
-									<?= tohtml( _("Restrict phpMyAdmin to Hestia login")) ?>
+									<?= tohtml(sprintf(_("Restrict phpMyAdmin to %s login"), $_SESSION["APP_NAME"])) ?>
 									<span class="hint">
-										<?= tohtml( _("Blocks phpMyAdmin's own login form; only reachable via the phpMyAdmin link inside Hestia (requires SSO above).")) ?>
+										<?= tohtml(sprintf(_("Blocks phpMyAdmin's own login form; only reachable via the phpMyAdmin link inside %s (requires SSO above)."), $_SESSION["APP_NAME"])) ?>
 									</span>
 								</label>
 								<select
@@ -696,13 +698,15 @@
 					<div class="u-mb10">
 						<label for="v_backup_mode" class="form-label">
 							<?= tohtml( _("Compression")) ?>
-							<a
-								href="https://hestiacp.com/docs/server-administration/backup-restore.html#what-is-the-difference-between-zstd-and-gzip"
-								target="_blank"
-								class="u-ml5"
-							>
-								<i class="fas fa-circle-question"></i>
-							</a>
+							<?php if (docs_url() !== "") { ?>
+								<a
+									href="<?= tohtml(docs_url("server-administration/backup-restore.html#what-is-the-difference-between-zstd-and-gzip")) ?>"
+									target="_blank"
+									class="u-ml5"
+								>
+									<i class="fas fa-circle-question"></i>
+								</a>
+							<?php } ?>
 						</label>
 						<select class="form-select" name="v_backup_mode" id="v_backup_mode">
 							<option value="gzip">
@@ -716,13 +720,15 @@
 					<div class="u-mb10">
 						<label for="v_backup_gzip" class="form-label">
 							<?= tohtml( _("Compression Level")) ?>
-							<a
-								href="https://hestiacp.com/docs/server-administration/backup-restore.html#what-is-the-optimal-compression-ratio"
-								target="_blank"
-								class="u-ml5"
-							>
-								<i class="fas fa-circle-question"></i>
-							</a>
+							<?php if (docs_url() !== "") { ?>
+								<a
+									href="<?= tohtml(docs_url("server-administration/backup-restore.html#what-is-the-optimal-compression-ratio")) ?>"
+									target="_blank"
+									class="u-ml5"
+								>
+									<i class="fas fa-circle-question"></i>
+								</a>
+							<?php } ?>
 						</label>
 						<select class="form-select" name="v_backup_gzip" id="v_backup_gzip">
 							<?php for ($level = 1; $level < 20; $level++) { ?>
@@ -739,13 +745,15 @@
 					<div class="u-mb20">
 						<label for="v_backup_dir" class="form-label">
 							<?= tohtml( _("Directory")) ?>
-							<a
-								href="https://hestiacp.com/docs/server-administration/backup-restore.html#how-to-change-default-backup-folder"
-								target="_blank"
-								class="u-ml5"
-							>
-								<i class="fas fa-circle-question"></i>
-							</a>
+							<?php if (docs_url() !== "") { ?>
+								<a
+									href="<?= tohtml(docs_url("server-administration/backup-restore.html#how-to-change-default-backup-folder")) ?>"
+									target="_blank"
+									class="u-ml5"
+								>
+									<i class="fas fa-circle-question"></i>
+								</a>
+							<?php } ?>
 						</label>
 						<input
 							type="text"
@@ -772,13 +780,15 @@
 						<div class="u-mb10">
 							<label for="backup_type" class="form-label">
 								<?= tohtml( _("Protocol")) ?>
-								<a
-									href="https://hestiacp.com/docs/server-administration/backup-restore.html#what-kind-of-protocols-are-currently-supported"
-									target="_blank"
-									class="u-ml5"
-								>
-									<i class="fas fa-circle-question"></i>
-								</a>
+								<?php if (docs_url() !== "") { ?>
+									<a
+										href="<?= tohtml(docs_url("server-administration/backup-restore.html#what-kind-of-protocols-are-currently-supported")) ?>"
+										target="_blank"
+										class="u-ml5"
+									>
+										<i class="fas fa-circle-question"></i>
+									</a>
+								<?php } ?>
 							</label>
 							<select
 								x-model="backupType"

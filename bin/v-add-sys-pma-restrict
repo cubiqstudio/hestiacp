@@ -76,11 +76,11 @@ $BIN/v-change-sys-config-value 'PMA_RESTRICT_ACCESS' "yes"
 #----------------------------------------------------------#
 
 if [ "$MODE" != "quiet" ]; then
-	echo "phpMyAdmin access has been restricted to Hestia Single Sign-On only"
+	echo "phpMyAdmin access has been restricted to ${APP_NAME:-VylarisSpace} Single Sign-On only"
 fi
 
 # Logging
-$BIN/v-log-action "system" "Info" "Plugins" "phpMyAdmin access restricted to Hestia Single Sign-On."
+$BIN/v-log-action "system" "Info" "Plugins" "phpMyAdmin access restricted to ${APP_NAME:-VylarisSpace} Single Sign-On."
 log_event "$OK" "$ARGUMENTS"
 
 exit

@@ -42,7 +42,7 @@ if (!empty($_POST)) {
 			$return_var,
 		);
 	}
-	if (!empty($_POST["v_hide_docs"]) && $_SESSION["HIDE_DOCS"] != $_POST["v_hide_docs"]) {
+	if (!empty($_POST["v_hide_docs"]) && ($_SESSION["HIDE_DOCS"] ?? "yes") != $_POST["v_hide_docs"]) {
 		exec(
 			HESTIA_CMD .
 				"v-change-sys-config-value HIDE_DOCS " .
@@ -70,21 +70,6 @@ if (!empty($_POST)) {
 			$return_var,
 		);
 	}
-	if (!empty($_POST["v_hide_docs"]) && $_SESSION["HIDE_DOCS"] != $_POST["v_hide_docs"]) {
-		exec(
-			HESTIA_CMD .
-				"v-change-sys-config-value HIDE_DOCS " .
-				quoteshellarg($_POST["v_hide_docs"]),
-			$output,
-			$return_var,
-		);
-	}
-	if (!empty($_POST["v_update_logo"])) {
-		exec(HESTIA_CMD . "v-update-white-label-logo");
-	}
-	if (!empty($_POST["v_reset_logo"])) {
-		exec(HESTIA_CMD . "v-update-white-label-logo yes yes");
-	}
 }
 
 // Check system configuration
@@ -99,7 +84,7 @@ foreach ($sys_arr as $key => $value) {
 
 $v_title = $_SESSION["TITLE"];
 $v_app_name = $_SESSION["APP_NAME"];
-$v_hide_docs = $_SESSION["HIDE_DOCS"];
+$v_hide_docs = $_SESSION["HIDE_DOCS"] ?? "yes";
 $v_from_name = $_SESSION["FROM_NAME"];
 $v_from_email = $_SESSION["FROM_EMAIL"];
 $v_subject_email = $_SESSION["SUBJECT_EMAIL"];
