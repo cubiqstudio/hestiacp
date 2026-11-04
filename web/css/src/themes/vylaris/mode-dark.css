@@ -1,0 +1,107 @@
+/*
+    VylarisGroup Webspace - dark mode tokens
+*/
+
+:root {
+	color-scheme: dark;
+
+	/* Surfaces */
+	--vy-bg: #0b0e14;
+	--vy-surface: #121722;
+	--vy-surface-raised: #181f2c;
+	--vy-surface-sunken: #0e121b;
+	--vy-overlay: rgb(2 6 14 / 70%);
+
+	/* Lines */
+	--vy-border: #232c3c;
+	--vy-border-strong: #33405a;
+
+	/* Text */
+	--vy-text: #e6eaf2;
+	--vy-text-heading: #f5f7fb;
+	--vy-text-muted: #98a2b5;
+	--vy-text-on-primary: #fff;
+
+	/* Interactive */
+	--vy-primary: #1f64e0;
+	--vy-primary-hover: #2569e8;
+	--vy-primary-active: #1a57c9;
+	--vy-primary-subtle: rgb(55 146 247 / 14%);
+	--vy-link: #5aa9fa;
+	--vy-link-hover: #8cc2fc;
+	--vy-focus-color: #5aa9fa;
+	--vy-selection: rgb(90 169 250 / 30%);
+
+	/* Status */
+	--vy-success: #34d399;
+	--vy-success-subtle: rgb(52 211 153 / 12%);
+	--vy-warning: #fbbf24;
+	--vy-warning-subtle: rgb(251 191 36 / 12%);
+	--vy-danger: #f87171;
+	--vy-danger-subtle: rgb(248 113 113 / 12%);
+	--vy-info: #5aa9fa;
+	--vy-info-subtle: rgb(90 169 250 / 12%);
+
+	/* Components */
+	--vy-topbar-bg: #0e121b;
+	--vy-topbar-text: #e6eaf2;
+	--vy-topbar-border: #232c3c;
+	--vy-input-bg: #0e121b;
+	--vy-input-border: #33405a;
+	--vy-row-hover: #171e2b;
+	--vy-row-selected: #14233d;
+	--vy-row-stripe: #0f141e;
+
+	/* Elevation */
+	--vy-shadow-sm: 0 1px 2px rgb(0 0 0 / 40%);
+	--vy-shadow-md: 0 6px 18px rgb(0 0 0 / 45%), 0 1px 3px rgb(0 0 0 / 40%);
+	--vy-shadow-lg: 0 20px 48px rgb(0 0 0 / 60%), 0 2px 8px rgb(0 0 0 / 40%);
+
+	/* Icon accents (each >= 3:1 on --vy-surface) */
+	--vy-icon-blue: #5aa9fa;
+	--vy-icon-lightblue: #7cc0ff;
+	--vy-icon-teal: #2dd4bf;
+	--vy-icon-green: #34d399;
+	--vy-icon-orange: #fb923c;
+	--vy-icon-red: #f87171;
+	--vy-icon-purple: #a78bfa;
+	--vy-icon-maroon: #f472b6;
+
+	/* Charts */
+	--vy-chart-1: #5aa9fa;
+	--vy-chart-2: #f472b6;
+	--vy-chart-3: #34d399;
+	--vy-chart-grid: #232c3c;
+
+	/* Map to the variables used by default.css so unmodified rules follow the theme */
+	--font-family: var(--vy-font-sans);
+	--font-family-monospace: var(--vy-font-mono);
+	--border-radius-base: var(--vy-radius-sm);
+	--color-text: var(--vy-text);
+	--color-text-link: var(--vy-link);
+	--color-text-link-hover: var(--vy-link-hover);
+	--color-text-heading: var(--vy-text-heading);
+	--color-background: var(--vy-bg);
+	--alert-border-color: var(--vy-surface);
+	--alert-box-shadow: var(--vy-shadow-md);
+	--alert-text-shadow: none;
+	--alert-info-color: var(--vy-info);
+	--alert-danger-color: var(--vy-danger);
+	--alert-success-color: var(--vy-success);
+	--icon-color-teal: var(--vy-icon-teal);
+	--icon-color-purple: var(--vy-icon-purple);
+	--icon-color-maroon: var(--vy-icon-maroon);
+	--icon-color-red: var(--vy-icon-red);
+	--icon-color-green: var(--vy-icon-green);
+	--icon-color-orange: var(--vy-icon-orange);
+	--icon-color-blue: var(--vy-icon-blue);
+	--icon-color-lightblue: var(--vy-icon-lightblue);
+	--top-bar-background: var(--vy-topbar-bg);
+	--top-bar-box-shadow: var(--vy-shadow-sm);
+	--top-bar-border-bottom: 1px solid var(--vy-topbar-border);
+	--chart-label-color: var(--vy-text-muted);
+	--chart-grid-color: var(--vy-chart-grid);
+	--chart-line-1-color: var(--vy-chart-1);
+	--chart-line-2-color: var(--vy-chart-2);
+	--chart-line-3-color: var(--vy-chart-3);
+}

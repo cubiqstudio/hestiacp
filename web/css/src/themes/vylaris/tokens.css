@@ -1,0 +1,52 @@
+/*
+    VylarisGroup Webspace - shared design tokens (mode independent)
+    Mode dependent tokens live in mode-light.css / mode-dark.css.
+*/
+
+:root {
+	/* Brand (sampled from the VylarisGroupEurope logo) */
+	--vy-brand-300: #3e9afa;
+	--vy-brand-400: #3792f7;
+	--vy-brand-500: #2679f5;
+	--vy-brand-600: #1f64e0;
+	--vy-brand-700: #0e52d1;
+	--vy-brand-800: #0a49c1;
+	--vy-brand-gradient: linear-gradient(135deg, #3e9afa 0%, #2679f5 55%, #1e68f5 100%);
+
+	/* Typography */
+	--vy-font-sans:
+		"Inter Variable", "Inter", system-ui, -apple-system, "Segoe UI", roboto, "Helvetica Neue", arial,
+		sans-serif;
+	--vy-font-display: "Exo", var(--vy-font-sans);
+	--vy-font-mono: "Inconsolata", ui-monospace, "SFMono-Regular", menlo, consolas, monospace;
+
+	/* Shape */
+	--vy-radius-xs: 4px;
+	--vy-radius-sm: 6px;
+	--vy-radius-md: 10px;
+	--vy-radius-lg: 14px;
+	--vy-radius-pill: 999px;
+
+	/* Spacing scale (4px base) */
+	--vy-space-1: 4px;
+	--vy-space-2: 8px;
+	--vy-space-3: 12px;
+	--vy-space-4: 16px;
+	--vy-space-5: 24px;
+	--vy-space-6: 32px;
+	--vy-space-7: 48px;
+
+	/* Motion */
+	--vy-transition: 150ms ease;
+
+	/* Focus ring (same geometry in both modes, color comes from the mode file) */
+	--vy-focus-width: 2px;
+	--vy-focus-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	:root {
+		--vy-transition: 0s;
+		--animate-duration: 0s;
+	}
+}

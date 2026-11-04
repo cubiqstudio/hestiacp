@@ -1,0 +1,16 @@
+/*
+    Theme Name:  VylarisGroup Webspace (Light)
+    Author:      VylarisGroupEurope
+    Based on:    HestiaCP (GPL-3.0-or-later)
+*/
+
+@import url("../media_queries");
+@import url("vylaris/tokens");
+@import url("vylaris/mode-light");
+@import url("vylaris/fonts");
+@import url("vylaris/base");
+@import url("vylaris/topbar-menu");
+@import url("vylaris/toolbar-units");
+@import url("vylaris/forms-buttons");
+@import url("vylaris/feedback");
+@import url("vylaris/login");
