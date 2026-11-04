@@ -1,0 +1,50 @@
+[
+	{
+		"ID": "1",
+		"TOPIC": "Backup abgeschlossen",
+		"NOTICE": "Das Backup von <b>admin</b> wurde erfolgreich erstellt (4,2 GB).",
+		"PRIORITY": "1",
+		"ACK": "",
+		"TIMESTAMP_ISO": "2026-01-01T10:00:00+00:00",
+		"TIMESTAMP_TITLE": "01 January 2026, 10:00:00",
+		"TIMESTAMP_TEXT": "01 Jan 2026, 10:00",
+		"DATE": "2026-01-01",
+		"TIME": "10:00:00"
+	},
+	{
+		"ID": "2",
+		"TOPIC": "SSL certificate renewed",
+		"NOTICE": "The certificate for <b>vylaris-group.eu</b> was renewed.",
+		"PRIORITY": "0",
+		"ACK": "",
+		"TIMESTAMP_ISO": "2026-01-02T10:01:00+00:00",
+		"TIMESTAMP_TITLE": "02 January 2026, 10:01:00",
+		"TIMESTAMP_TEXT": "02 Jan 2026, 10:01",
+		"DATE": "2026-01-02",
+		"TIME": "10:01:00"
+	},
+	{
+		"ID": "3",
+		"TOPIC": "Speicherplatz knapp",
+		"NOTICE": "Der Benutzer <b>bernd</b> hat 92 % seines Speicherkontingents belegt.",
+		"PRIORITY": "2",
+		"ACK": "yes",
+		"TIMESTAMP_ISO": "2026-01-03T10:02:00+00:00",
+		"TIMESTAMP_TITLE": "03 January 2026, 10:02:00",
+		"TIMESTAMP_TEXT": "03 Jan 2026, 10:02",
+		"DATE": "2026-01-03",
+		"TIME": "10:02:00"
+	},
+	{
+		"ID": "4",
+		"TOPIC": "Update available",
+		"NOTICE": "Package <b>hestia 1.10.5</b> can be upgraded. Run <code>apt update && apt upgrade</code> on the server.",
+		"PRIORITY": "0",
+		"ACK": "yes",
+		"TIMESTAMP_ISO": "2026-01-04T10:03:00+00:00",
+		"TIMESTAMP_TITLE": "04 January 2026, 10:03:00",
+		"TIMESTAMP_TEXT": "04 Jan 2026, 10:03",
+		"DATE": "2026-01-04",
+		"TIME": "10:03:00"
+	}
+]

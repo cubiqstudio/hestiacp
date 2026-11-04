@@ -1,0 +1,1405 @@
+{
+	"pages": [
+		{
+			"id": "login",
+			"template": "login/login",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-error",
+			"template": "login/login",
+			"fixture": "login_login",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-password",
+			"template": "login/login_1",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-password-error",
+			"template": "login/login_1",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-2fa",
+			"template": "login/login_2",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-2fa-error",
+			"template": "login/login_2",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-classic",
+			"template": "login/login_a",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-classic-error",
+			"template": "login/login_a",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "login-de",
+			"template": "login/login",
+			"fixture": "login_login",
+			"variant": "error",
+			"lang": "de",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-request",
+			"template": "login/reset_1",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-request-error",
+			"template": "login/reset_1",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-code",
+			"template": "login/reset_2",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-code-error",
+			"template": "login/reset_2",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-password",
+			"template": "login/reset_3",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-password-error",
+			"template": "login/reset_3",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-2fa",
+			"template": "login/reset2fa",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-2fa-error",
+			"template": "login/reset2fa",
+			"variant": "error",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "reset-2fa-success",
+			"template": "login/reset2fa",
+			"variant": "success",
+			"group": "login",
+			"mode": "login",
+			"tab": "LOGIN"
+		},
+		{
+			"id": "list-user",
+			"group": "list",
+			"template": "list_user",
+			"tab": "USER"
+		},
+		{
+			"id": "list-user-empty",
+			"group": "list",
+			"template": "list_user",
+			"tab": "USER",
+			"variant": "empty"
+		},
+		{
+			"id": "list-web",
+			"group": "list",
+			"template": "list_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "list-web-user",
+			"group": "list",
+			"template": "list_web",
+			"tab": "WEB",
+			"variant": "user",
+			"session": {
+				"user": "bernd",
+				"userContext": "user",
+				"role": "user",
+				"ROOT_USER": "admin"
+			}
+		},
+		{
+			"id": "list-web-empty",
+			"group": "list",
+			"template": "list_web",
+			"tab": "WEB",
+			"variant": "empty"
+		},
+		{
+			"id": "list-web-impersonating",
+			"group": "list",
+			"template": "list_web",
+			"tab": "WEB",
+			"variant": "user",
+			"session": {
+				"look": "bernd"
+			}
+		},
+		{
+			"id": "list-web-readonly",
+			"group": "list",
+			"template": "list_web",
+			"tab": "WEB",
+			"variant": "user",
+			"session": {
+				"user": "bernd",
+				"userContext": "user",
+				"role": "user",
+				"ROOT_USER": "admin",
+				"POLICY_USER_VIEW_SUSPENDED": "yes"
+			},
+			"panel": {
+				"bernd": {
+					"SUSPENDED": "yes"
+				}
+			}
+		},
+		{
+			"id": "list-dns",
+			"group": "list",
+			"template": "list_dns",
+			"tab": "DNS"
+		},
+		{
+			"id": "list-dns-records",
+			"group": "list",
+			"template": "list_dns_rec",
+			"tab": "DNS",
+			"get": {
+				"domain": "vylaris-group.eu"
+			}
+		},
+		{
+			"id": "list-dns-dnssec",
+			"group": "list",
+			"template": "list_dns_public",
+			"tab": "DNS",
+			"get": {
+				"domain": "vylaris-group.eu",
+				"action": "dnssec"
+			}
+		},
+		{
+			"id": "list-mail",
+			"group": "list",
+			"template": "list_mail",
+			"tab": "MAIL"
+		},
+		{
+			"id": "list-mail-accounts",
+			"group": "list",
+			"template": "list_mail_acc",
+			"tab": "MAIL",
+			"get": {
+				"domain": "vylaris-group.eu"
+			}
+		},
+		{
+			"id": "list-mail-dns",
+			"group": "list",
+			"template": "list_mail_dns",
+			"tab": "MAIL",
+			"get": {
+				"domain": "vylaris-group.eu",
+				"dns": "1"
+			}
+		},
+		{
+			"id": "list-db",
+			"group": "list",
+			"template": "list_db",
+			"tab": "DB"
+		},
+		{
+			"id": "list-cron",
+			"group": "list",
+			"template": "list_cron",
+			"tab": "CRON"
+		},
+		{
+			"id": "list-backups",
+			"group": "list",
+			"template": "list_backup",
+			"tab": "BACKUP"
+		},
+		{
+			"id": "list-backup-detail",
+			"group": "list",
+			"template": "list_backup_detail",
+			"tab": "BACKUP"
+		},
+		{
+			"id": "list-backup-incremental",
+			"group": "list",
+			"template": "list_backup_incremental",
+			"tab": "BACKUP",
+			"session": {},
+			"panel": {
+				"admin": {
+					"BACKUPS_INCREMENTAL": "yes"
+				}
+			}
+		},
+		{
+			"id": "list-backup-exclusions",
+			"group": "list",
+			"template": "list_backup_exclusions",
+			"tab": "BACKUP"
+		},
+		{
+			"id": "list-packages",
+			"group": "list",
+			"template": "list_packages",
+			"tab": "PACKAGE"
+		},
+		{
+			"id": "list-ips",
+			"group": "list",
+			"template": "list_ip",
+			"tab": "IP"
+		},
+		{
+			"id": "list-firewall",
+			"group": "list",
+			"template": "list_firewall",
+			"tab": "FIREWALL"
+		},
+		{
+			"id": "list-firewall-banlist",
+			"group": "list",
+			"template": "list_firewall_banlist",
+			"tab": "FIREWALL"
+		},
+		{
+			"id": "list-firewall-ipset",
+			"group": "list",
+			"template": "list_firewall_ipset",
+			"tab": "FIREWALL"
+		},
+		{
+			"id": "list-server",
+			"group": "list",
+			"template": "list_services",
+			"tab": "SERVER"
+		},
+		{
+			"id": "list-stats",
+			"group": "list",
+			"template": "list_stats",
+			"tab": "STATS"
+		},
+		{
+			"id": "list-stats-user",
+			"group": "list",
+			"template": "list_stats",
+			"tab": "STATS",
+			"variant": "user",
+			"session": {
+				"user": "bernd",
+				"userContext": "user",
+				"role": "user",
+				"ROOT_USER": "admin"
+			}
+		},
+		{
+			"id": "list-log",
+			"group": "list",
+			"template": "list_log",
+			"tab": "LOG"
+		},
+		{
+			"id": "list-log-system",
+			"group": "list",
+			"template": "list_log",
+			"tab": "SERVER",
+			"variant": "system"
+		},
+		{
+			"id": "list-log-auth",
+			"group": "list",
+			"template": "list_log_auth",
+			"tab": "LOG"
+		},
+		{
+			"id": "list-updates",
+			"group": "list",
+			"template": "list_updates",
+			"tab": "SERVER"
+		},
+		{
+			"id": "list-keys",
+			"group": "list",
+			"template": "list_key",
+			"tab": "USER"
+		},
+		{
+			"id": "list-access-keys",
+			"group": "list",
+			"template": "list_access_keys",
+			"tab": "USER"
+		},
+		{
+			"id": "list-access-keys-empty",
+			"group": "list",
+			"template": "list_access_keys",
+			"tab": "USER",
+			"variant": "empty"
+		},
+		{
+			"id": "list-access-key",
+			"group": "list",
+			"template": "list_access_key",
+			"tab": "USER",
+			"variant": "created"
+		},
+		{
+			"id": "list-webapps",
+			"group": "list",
+			"template": "list_webapps",
+			"tab": "WEB"
+		},
+		{
+			"id": "list-search",
+			"group": "list",
+			"template": "list_search",
+			"tab": "SEARCH"
+		},
+		{
+			"id": "list-search-empty",
+			"group": "list",
+			"template": "list_search",
+			"tab": "SEARCH",
+			"variant": "empty"
+		},
+		{
+			"id": "list-task-monitor",
+			"group": "list",
+			"template": "list_rrd",
+			"tab": "RRD",
+			"settle": 1200
+		},
+		{
+			"id": "list-task-monitor-weekly",
+			"group": "list",
+			"template": "list_rrd",
+			"tab": "RRD",
+			"variant": "weekly",
+			"settle": 1200
+		},
+		{
+			"id": "web-terminal",
+			"group": "list",
+			"template": "list_terminal",
+			"tab": "TERMINAL",
+			"fakeSocket": true,
+			"settle": 900
+		},
+		{
+			"id": "web-log-access",
+			"group": "list",
+			"template": "list_weblog",
+			"tab": "WEB",
+			"mode": "standalone"
+		},
+		{
+			"id": "web-log-error",
+			"group": "list",
+			"template": "list_weblog",
+			"tab": "WEB",
+			"variant": "error",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-cpu",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "CPU",
+			"variant": "cpu",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-mem",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "MEM",
+			"variant": "mem",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-disk",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "DISK",
+			"variant": "disk",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-net",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "NET",
+			"variant": "net",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-web",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "WEB",
+			"variant": "web",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-dns",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "DNS",
+			"variant": "dns",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-mail",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "MAIL",
+			"variant": "mail",
+			"mode": "standalone"
+		},
+		{
+			"id": "server-info-db",
+			"group": "list",
+			"template": "list_server_info",
+			"tab": "DB",
+			"variant": "db",
+			"mode": "standalone"
+		},
+		{
+			"id": "edit-web",
+			"group": "edit",
+			"template": "edit_web",
+			"tab": "WEB",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "edit-web-nossl",
+			"group": "edit",
+			"template": "edit_web",
+			"tab": "WEB",
+			"variant": "nossl",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "edit-web-custom-ssl",
+			"group": "edit",
+			"template": "edit_web",
+			"tab": "WEB",
+			"variant": "custom-ssl",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "edit-web-user",
+			"group": "edit",
+			"template": "edit_web",
+			"tab": "WEB",
+			"session": {
+				"user": "bernd",
+				"userContext": "user",
+				"role": "user",
+				"ROOT_USER": "admin"
+			},
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "edit-user",
+			"group": "edit",
+			"template": "edit_user",
+			"tab": "USER",
+			"get": {
+				"user": "löwenzahn"
+			}
+		},
+		{
+			"id": "edit-user-self",
+			"group": "edit",
+			"template": "edit_user",
+			"tab": "USER",
+			"variant": "self-user",
+			"session": {
+				"user": "bernd",
+				"userContext": "user",
+				"role": "user",
+				"ROOT_USER": "admin"
+			},
+			"get": {
+				"user": "bernd"
+			}
+		},
+		{
+			"id": "edit-package",
+			"group": "edit",
+			"template": "edit_package",
+			"tab": "PACKAGE",
+			"get": {
+				"package": "business-plus"
+			}
+		},
+		{
+			"id": "edit-dns",
+			"group": "edit",
+			"template": "edit_dns",
+			"tab": "DNS",
+			"get": {
+				"domain": "vylaris-group.eu"
+			}
+		},
+		{
+			"id": "edit-dns-record",
+			"group": "edit",
+			"template": "edit_dns_rec",
+			"tab": "DNS",
+			"get": {
+				"domain": "vylaris-group.eu",
+				"record_id": "107"
+			}
+		},
+		{
+			"id": "edit-mail",
+			"group": "edit",
+			"template": "edit_mail",
+			"tab": "MAIL",
+			"get": {
+				"domain": "vylaris-group.eu"
+			}
+		},
+		{
+			"id": "edit-mail-account",
+			"group": "edit",
+			"template": "edit_mail_acc",
+			"tab": "MAIL",
+			"get": {
+				"domain": "vylaris-group.eu",
+				"account": "geschäftsführung"
+			}
+		},
+		{
+			"id": "edit-db",
+			"group": "edit",
+			"template": "edit_db",
+			"tab": "DB",
+			"get": {
+				"database": "admin_wp_main"
+			}
+		},
+		{
+			"id": "edit-cron",
+			"group": "edit",
+			"template": "edit_cron",
+			"tab": "CRON",
+			"get": {
+				"job": "1"
+			}
+		},
+		{
+			"id": "edit-ip",
+			"group": "edit",
+			"template": "edit_ip",
+			"tab": "IP",
+			"get": {
+				"ip": "203.0.113.11"
+			}
+		},
+		{
+			"id": "edit-firewall",
+			"group": "edit",
+			"template": "edit_firewall",
+			"tab": "FIREWALL",
+			"get": {
+				"rule": "8"
+			}
+		},
+		{
+			"id": "edit-backup-exclusions",
+			"group": "edit",
+			"template": "edit_backup_exclusions",
+			"tab": "BACKUP"
+		},
+		{
+			"id": "edit-whitelabel",
+			"group": "edit",
+			"template": "edit_whitelabel",
+			"tab": "SERVER"
+		},
+		{
+			"id": "add-web",
+			"group": "add",
+			"template": "add_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "add-web-admin-notice",
+			"group": "add",
+			"template": "add_web",
+			"tab": "WEB",
+			"variant": "accept-notice"
+		},
+		{
+			"id": "add-db",
+			"group": "add",
+			"template": "add_db",
+			"tab": "DB"
+		},
+		{
+			"id": "add-db-admin-notice",
+			"group": "add",
+			"template": "add_db",
+			"tab": "DB",
+			"variant": "accept-notice"
+		},
+		{
+			"id": "add-mail",
+			"group": "add",
+			"template": "add_mail",
+			"tab": "MAIL"
+		},
+		{
+			"id": "add-mail-admin-notice",
+			"group": "add",
+			"template": "add_mail",
+			"tab": "MAIL",
+			"variant": "accept-notice"
+		},
+		{
+			"id": "add-dns",
+			"group": "add",
+			"template": "add_dns",
+			"tab": "DNS"
+		},
+		{
+			"id": "add-dns-admin-notice",
+			"group": "add",
+			"template": "add_dns",
+			"tab": "DNS",
+			"variant": "accept-notice"
+		},
+		{
+			"id": "add-web-error",
+			"group": "add",
+			"template": "add_web",
+			"tab": "WEB",
+			"variant": "error"
+		},
+		{
+			"id": "add-mail-account",
+			"group": "add",
+			"template": "add_mail_acc",
+			"tab": "MAIL",
+			"get": {
+				"domain": "vylaris-group.eu"
+			}
+		},
+		{
+			"id": "add-user",
+			"group": "add",
+			"template": "add_user",
+			"tab": "USER"
+		},
+		{
+			"id": "add-user-error",
+			"group": "add",
+			"template": "add_user",
+			"tab": "USER",
+			"variant": "error"
+		},
+		{
+			"id": "add-dns-record",
+			"group": "add",
+			"template": "add_dns_rec",
+			"tab": "DNS",
+			"get": {
+				"domain": "vylaris-group.eu"
+			}
+		},
+		{
+			"id": "add-ip",
+			"group": "add",
+			"template": "add_ip",
+			"tab": "IP"
+		},
+		{
+			"id": "add-cron",
+			"group": "add",
+			"template": "add_cron",
+			"tab": "CRON"
+		},
+		{
+			"id": "add-package",
+			"group": "add",
+			"template": "add_package",
+			"tab": "PACKAGE"
+		},
+		{
+			"id": "add-firewall",
+			"group": "add",
+			"template": "add_firewall",
+			"tab": "FIREWALL"
+		},
+		{
+			"id": "add-firewall-banlist",
+			"group": "add",
+			"template": "add_firewall_banlist",
+			"tab": "FIREWALL"
+		},
+		{
+			"id": "add-firewall-ipset",
+			"group": "add",
+			"template": "add_firewall_ipset",
+			"tab": "FIREWALL"
+		},
+		{
+			"id": "add-ssh-key",
+			"group": "add",
+			"template": "add_key",
+			"tab": "USER"
+		},
+		{
+			"id": "add-access-key",
+			"group": "add",
+			"template": "add_access_key",
+			"tab": "USER"
+		},
+		{
+			"id": "setup-webapp",
+			"group": "add",
+			"template": "setup_webapp",
+			"tab": "WEB"
+		},
+		{
+			"id": "generate-ssl",
+			"group": "add",
+			"template": "generate_ssl",
+			"tab": "WEB",
+			"get": {
+				"domain": "vylaris-group.eu"
+			}
+		},
+		{
+			"id": "generate-ssl-result",
+			"group": "add",
+			"template": "list_ssl",
+			"tab": "WEB"
+		},
+		{
+			"id": "edit-server",
+			"group": "server",
+			"template": "edit_server",
+			"tab": "SERVER"
+		},
+		{
+			"id": "edit-server-nginx",
+			"group": "server",
+			"template": "edit_server_nginx",
+			"tab": "SERVER",
+			"get": {
+				"srv": "nginx"
+			}
+		},
+		{
+			"id": "edit-server-nginx-config",
+			"group": "server",
+			"template": "edit_server_service",
+			"tab": "SERVER",
+			"variant": "nginx",
+			"get": {
+				"srv": "nginx"
+			}
+		},
+		{
+			"id": "edit-server-apache",
+			"group": "server",
+			"template": "edit_server_httpd",
+			"tab": "SERVER",
+			"get": {
+				"srv": "apache2"
+			}
+		},
+		{
+			"id": "edit-server-php",
+			"group": "server",
+			"template": "edit_server_php",
+			"tab": "SERVER",
+			"get": {
+				"srv": "php"
+			}
+		},
+		{
+			"id": "edit-server-mysql",
+			"group": "server",
+			"template": "edit_server_mysql",
+			"tab": "SERVER",
+			"get": {
+				"srv": "mysql"
+			}
+		},
+		{
+			"id": "edit-server-pgsql",
+			"group": "server",
+			"template": "edit_server_pgsql",
+			"tab": "SERVER",
+			"get": {
+				"srv": "pgsql"
+			}
+		},
+		{
+			"id": "edit-server-bind9",
+			"group": "server",
+			"template": "edit_server_bind9",
+			"tab": "SERVER",
+			"get": {
+				"srv": "bind9"
+			}
+		},
+		{
+			"id": "edit-server-dovecot",
+			"group": "server",
+			"template": "edit_server_dovecot",
+			"tab": "SERVER",
+			"get": {
+				"srv": "dovecot"
+			}
+		},
+		{
+			"id": "list-web-de",
+			"group": "german",
+			"template": "list_web",
+			"tab": "WEB",
+			"lang": "de"
+		},
+		{
+			"id": "list-user-de",
+			"group": "german",
+			"template": "list_user",
+			"tab": "USER",
+			"lang": "de"
+		},
+		{
+			"id": "list-mail-de",
+			"group": "german",
+			"template": "list_mail",
+			"tab": "MAIL",
+			"lang": "de"
+		},
+		{
+			"id": "edit-web-de",
+			"group": "german",
+			"template": "edit_web",
+			"tab": "WEB",
+			"lang": "de",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "edit-server-de",
+			"group": "german",
+			"template": "edit_server",
+			"tab": "SERVER",
+			"lang": "de"
+		},
+		{
+			"id": "add-user-de",
+			"group": "german",
+			"template": "add_user",
+			"tab": "USER",
+			"lang": "de",
+			"variant": "error"
+		},
+		{
+			"id": "list-server-de",
+			"group": "german",
+			"template": "list_services",
+			"tab": "SERVER",
+			"lang": "de"
+		},
+		{
+			"id": "state-notifications-open",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".top-bar-notifications > button"
+				},
+				{
+					"waitFor": ".top-bar-notification-item"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB",
+			"panel": {
+				"admin": {
+					"NOTIFICATIONS": "yes"
+				}
+			}
+		},
+		{
+			"id": "state-user-menu-mobile",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".top-bar-menu > button"
+				},
+				{
+					"waitFor": ".top-bar-menu-panel"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB",
+			"viewports": ["mobile"]
+		},
+		{
+			"id": "state-main-menu-mobile",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".main-menu-toggle"
+				},
+				{
+					"waitFor": ".main-menu-list"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB",
+			"viewports": ["mobile"]
+		},
+		{
+			"id": "state-sort-menu-open",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".js-toggle-sorting-menu"
+				},
+				{
+					"waitFor": ".js-sorting-menu"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "state-shortcuts-open",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".button-floating-shortcuts"
+				},
+				{
+					"waitFor": "dialog.shortcuts"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB",
+			"viewports": ["desktop"]
+		},
+		{
+			"id": "state-delete-confirm-modal",
+			"group": "state",
+			"steps": [
+				{
+					"hover": ".js-unit >> nth=2"
+				},
+				{
+					"click": ".js-unit >> nth=2 >> a[href*='/delete/web/']",
+					"force": true
+				},
+				{
+					"waitFor": "dialog.modal"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "state-suspend-confirm-modal",
+			"group": "state",
+			"steps": [
+				{
+					"hover": ".js-unit >> nth=1"
+				},
+				{
+					"click": ".js-unit >> nth=1 >> a[href*='/suspend/mail/']",
+					"force": true
+				},
+				{
+					"waitFor": "dialog.modal"
+				}
+			],
+			"template": "list_mail",
+			"tab": "MAIL"
+		},
+		{
+			"id": "state-row-hover",
+			"group": "state",
+			"steps": [
+				{
+					"hover": ".js-unit >> nth=1"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB",
+			"viewports": ["desktop"]
+		},
+		{
+			"id": "state-bulk-select",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".js-unit >> nth=1 >> .js-unit-checkbox"
+				},
+				{
+					"click": ".js-unit >> nth=4 >> .js-unit-checkbox"
+				},
+				{
+					"select": ["form[action='/bulk/web/'] select", "suspend"]
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "state-search-focus",
+			"group": "state",
+			"steps": [
+				{
+					"focus": ".js-search-input"
+				},
+				{
+					"type": [".js-search-input", "müller"]
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "state-list-scrolled",
+			"group": "state",
+			"steps": [
+				{
+					"eval": "window.scrollTo(0, 420)"
+				},
+				{
+					"wait": 150
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "state-keyboard-focus",
+			"group": "state",
+			"steps": [
+				{
+					"press": "Tab"
+				},
+				{
+					"press": "Tab"
+				},
+				{
+					"press": "Tab"
+				},
+				{
+					"press": "Tab"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB"
+		},
+		{
+			"id": "state-form-field-focus",
+			"group": "state",
+			"steps": [
+				{
+					"scrollTo": "#v_aliases"
+				},
+				{
+					"focus": "#v_aliases"
+				}
+			],
+			"template": "edit_web",
+			"tab": "WEB",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "state-form-validation-error",
+			"group": "state",
+			"steps": [
+				{
+					"focus": "#v_username"
+				},
+				{
+					"eval": "document.querySelector('#v_username').setCustomValidity('Bitte ausfüllen / required'); document.querySelector('#v_username').classList.add('is-invalid')"
+				}
+			],
+			"template": "add_user",
+			"tab": "USER",
+			"variant": "error"
+		},
+		{
+			"id": "state-box-expanded",
+			"group": "state",
+			"steps": [
+				{
+					"click": "details.box-collapse >> nth=0 >> summary"
+				},
+				{
+					"click": "details.box-collapse >> nth=2 >> summary"
+				},
+				{
+					"wait": 100
+				}
+			],
+			"template": "edit_server",
+			"tab": "SERVER"
+		},
+		{
+			"id": "state-box-collapsed",
+			"group": "state",
+			"steps": [],
+			"template": "edit_server",
+			"tab": "SERVER"
+		},
+		{
+			"id": "state-edit-web-advanced",
+			"group": "state",
+			"steps": [
+				{
+					"click": "button[x-on\\:click='showAdvanced = !showAdvanced']"
+				},
+				{
+					"scrollTo": "#v_template"
+				}
+			],
+			"template": "edit_web",
+			"tab": "WEB",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "state-edit-web-certificates",
+			"group": "state",
+			"steps": [
+				{
+					"scrollTo": "#ssl_crt"
+				},
+				{
+					"focus": "#ssl_crt"
+				}
+			],
+			"template": "edit_web",
+			"tab": "WEB",
+			"variant": "custom-ssl",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "state-tabs-switch",
+			"group": "state",
+			"steps": [
+				{
+					"click": "#tab-three"
+				},
+				{
+					"wait": 100
+				}
+			],
+			"template": "edit_cron",
+			"tab": "CRON",
+			"get": {
+				"job": "1"
+			}
+		},
+		{
+			"id": "state-tabs-first",
+			"group": "state",
+			"steps": [],
+			"template": "edit_cron",
+			"tab": "CRON",
+			"get": {
+				"job": "1"
+			}
+		},
+		{
+			"id": "state-debug-panel",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".debug-panel-toggle"
+				},
+				{
+					"waitFor": ".debug-panel-content"
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB",
+			"session": {
+				"DEBUG_MODE": "true"
+			}
+		},
+		{
+			"id": "state-update-banner",
+			"group": "state",
+			"steps": [
+				{
+					"wait": 100
+				}
+			],
+			"template": "list_web",
+			"tab": "WEB",
+			"session": {
+				"UPDATE_AVAILABLE": "yes"
+			}
+		},
+		{
+			"id": "state-password-generate",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".js-generate-password"
+				},
+				{
+					"wait": 150
+				}
+			],
+			"template": "add_user",
+			"tab": "USER"
+		},
+		{
+			"id": "state-ftp-account-add",
+			"group": "state",
+			"steps": [
+				{
+					"click": "button[x-on\\:click='showAdvanced = !showAdvanced']"
+				},
+				{
+					"scrollTo": ".js-add-ftp-account"
+				},
+				{
+					"click": ".js-add-ftp-account"
+				},
+				{
+					"wait": 150
+				}
+			],
+			"template": "edit_web",
+			"tab": "WEB",
+			"get": {
+				"domain": "müller-und-söhne.de"
+			}
+		},
+		{
+			"id": "state-mobile-bulk-toolbar",
+			"group": "state",
+			"steps": [
+				{
+					"click": ".js-unit >> nth=1 >> .js-unit-checkbox"
+				}
+			],
+			"template": "list_user",
+			"tab": "USER",
+			"viewports": ["mobile"]
+		},
+		{
+			"id": "state-alerts-all-variants",
+			"group": "state",
+			"steps": [
+				{
+					"eval": "(() => {\n const host = document.querySelector('.form-container') || document.querySelector('.container');\n const wrap = document.createElement('div'); wrap.className = 'u-mb20';\n const mk = (cls, icon, text) => `<div class=\"alert ${cls} u-mb10\" role=\"alert\"><i class=\"fas ${icon}\"></i><p>${text}</p></div>`;\n const inline = (cls, icon, text) => `<div class=\"inline-alert ${cls} u-mb10\" role=\"alert\"><i class=\"fas ${icon}\"></i><p>${text}</p></div>`;\n wrap.innerHTML =\n  mk('alert-danger','fa-exclamation','Danger: Fehler beim Speichern / Error while saving the settings.') +\n  mk('alert-success','fa-check','Success: Die Änderungen wurden gespeichert / Changes have been saved.') +\n  mk('alert-info','fa-info','Info: Let\\'s Encrypt will obtain a new SSL certificate if the aliases change.') +\n  mk('alert-warning','fa-triangle-exclamation','Warning: Data loss warning, the installer will overwrite existing files.') +\n  inline('inline-alert-danger','fa-circle-exclamation','Inline danger: Ungültiger Wert für das Feld Domain') +\n  inline('inline-alert-warning','fa-triangle-exclamation','Inline warning: Last chance to save secret key!') +\n  inline('inline-alert-success','fa-circle-check','Inline success: Domain wurde hinzugefügt');\n host.prepend(wrap);\n})()"
+				},
+				{
+					"wait": 100
+				}
+			],
+			"template": "edit_db",
+			"tab": "DB",
+			"get": {
+				"database": "admin_wp_main"
+			}
+		},
+		{
+			"id": "state-alerts-login",
+			"group": "state",
+			"steps": [
+				{
+					"eval": "document.querySelector('#login-form').insertAdjacentHTML('afterbegin','<p class=\"inline-success u-mb10\">Password reset code has been sent to your email address</p>')"
+				}
+			],
+			"template": "login/login",
+			"fixture": "login_login",
+			"variant": "error",
+			"mode": "login",
+			"tab": "LOGIN"
+		}
+	]
+}
