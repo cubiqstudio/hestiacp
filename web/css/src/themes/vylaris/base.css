@@ -1,1 +1,288 @@
-/* VylarisGroup Webspace - base (placeholder, filled in Phase 1) */
+/* Base
+   ========================================================================== */
+
+html {
+	-webkit-text-size-adjust: 100%;
+	text-size-adjust: 100%;
+	scroll-padding-top: calc(var(--vy-topbar-height, 40px) + var(--vy-space-4));
+	scrollbar-width: thin;
+	scrollbar-color: var(--vy-border-strong) transparent;
+
+	@media (prefers-reduced-motion: reduce) {
+		scroll-behavior: auto;
+	}
+}
+
+body {
+	font-family: var(--vy-font-sans);
+	font-size: 0.875rem;
+	font-weight: 400;
+	line-height: 1.5;
+	color: var(--vy-text);
+	background-color: var(--vy-bg);
+	font-optical-sizing: auto;
+	text-rendering: optimizeLegibility;
+}
+
+::selection {
+	background-color: var(--vy-selection);
+}
+
+/* Focus
+   ========================================================================== */
+
+:focus-visible {
+	outline: var(--vy-focus-width) solid var(--vy-focus-color);
+	outline-offset: var(--vy-focus-offset);
+}
+
+/* Scrollbars
+   ========================================================================== */
+
+@supports not (scrollbar-color: auto) {
+	::-webkit-scrollbar {
+		width: 10px;
+		height: 10px;
+	}
+
+	::-webkit-scrollbar-track {
+		background: transparent;
+	}
+
+	::-webkit-scrollbar-thumb {
+		background-color: var(--vy-border-strong);
+		border: 2px solid transparent;
+		border-radius: var(--vy-radius-pill);
+		background-clip: content-box;
+	}
+
+	::-webkit-scrollbar-thumb:hover {
+		background-color: var(--vy-text-muted);
+	}
+}
+
+/* Typography
+   ========================================================================== */
+
+h1,
+.u-text-H1,
+h2,
+.u-text-H2 {
+	font-family: var(--vy-font-display);
+	font-weight: 600;
+	line-height: 1.25;
+	letter-spacing: -0.005em;
+	color: var(--vy-text-heading);
+}
+
+h1,
+.u-text-H1 {
+	font-size: 1.5rem;
+}
+
+h2,
+.u-text-H2 {
+	font-size: 1.25rem;
+}
+
+h3,
+.u-text-H3 {
+	font-family: var(--vy-font-sans);
+	font-size: 1rem;
+	font-weight: 600;
+	line-height: 1.35;
+	color: var(--vy-text-heading);
+}
+
+strong,
+b,
+th {
+	font-weight: 600;
+}
+
+small {
+	font-size: 0.8125rem;
+}
+
+a {
+	color: var(--vy-link);
+	transition: color var(--vy-transition);
+
+	&:hover {
+		color: var(--vy-link-hover);
+	}
+}
+
+.text-muted {
+	color: var(--vy-text-muted);
+}
+
+hr {
+	height: 0;
+	margin: var(--vy-space-4) 0;
+	border: 0;
+	border-top: 1px solid var(--vy-border);
+}
+
+blockquote {
+	margin: var(--vy-space-4) 0;
+	padding: var(--vy-space-1) var(--vy-space-4);
+	color: var(--vy-text-muted);
+	border-inline-start: 3px solid var(--vy-border-strong);
+}
+
+dl {
+	margin: 0;
+}
+
+dt {
+	font-weight: 600;
+	color: var(--vy-text-heading);
+}
+
+dd {
+	margin: 0;
+}
+
+mark {
+	color: var(--vy-text);
+	background-color: var(--vy-warning-subtle);
+	border-radius: var(--vy-radius-xs);
+}
+
+/* Code
+   ========================================================================== */
+
+code,
+kbd,
+samp,
+pre {
+	font-family: var(--vy-font-mono);
+	font-size: 1rem;
+	line-height: 1.4;
+}
+
+code,
+kbd,
+samp {
+	padding: 0.05em 0.4em;
+	color: var(--vy-text-heading);
+	background-color: var(--vy-surface-sunken);
+	border: 1px solid var(--vy-border);
+	border-radius: var(--vy-radius-xs);
+}
+
+kbd {
+	border-bottom-color: var(--vy-border-strong);
+}
+
+pre {
+	overflow: auto;
+	color: var(--vy-text);
+
+	& code {
+		padding: 0;
+		font-size: inherit;
+		background: none;
+		border: 0;
+		border-radius: 0;
+	}
+}
+
+.console-output {
+	color: var(--vy-text);
+	font-size: 0.9375rem;
+	line-height: 1.4;
+}
+
+/* Tables
+   ========================================================================== */
+
+table,
+.units-table-cell.u-text-center,
+.units-table-cell.u-text-center-desktop,
+.top-bar-usage,
+.stats,
+.values-list,
+.server-summary {
+	font-variant-numeric: tabular-nums;
+}
+
+caption {
+	padding: var(--vy-space-2) var(--vy-space-3);
+	text-align: start;
+	color: var(--vy-text-muted);
+}
+
+th,
+td {
+	padding: var(--vy-space-2) var(--vy-space-3);
+	text-align: start;
+	vertical-align: top;
+	border-bottom: 1px solid var(--vy-border);
+}
+
+th {
+	color: var(--vy-text-muted);
+	font-size: 0.8125rem;
+}
+
+/* Utilities
+   ========================================================================== */
+
+.u-text-bold {
+	font-weight: 600 !important;
+}
+
+.u-console {
+	font-size: 1rem !important;
+	line-height: 1.4 !important;
+}
+
+/* Brand mark
+   ========================================================================== */
+
+.logo-mark {
+	flex: none;
+	height: auto;
+	max-width: 100%;
+	vertical-align: middle;
+}
+
+.logo-mark--on-light {
+	display: var(--vy-logo-on-light-display);
+}
+
+.logo-mark--on-dark {
+	display: var(--vy-logo-on-dark-display);
+}
+
+/* App content
+   ========================================================================== */
+
+.app-content {
+	padding-bottom: var(--vy-space-6);
+}
+
+/* App footer
+   ========================================================================== */
+
+.app-footer {
+	color: var(--vy-text-muted);
+	font-size: 0.8125rem;
+	border-top: 1px solid var(--vy-border);
+	padding: var(--vy-space-4);
+
+	@media (--viewport-medium) {
+		padding: var(--vy-space-4) var(--vy-space-5);
+	}
+}
+
+.app-footer-link {
+	color: inherit;
+	font-weight: 500;
+
+	&:hover {
+		color: var(--vy-link);
+	}
+}
