@@ -221,7 +221,7 @@ namespace {
 			"language" => $lang,
 			"LANGUAGE" => $lang,
 			// Branding / app
-			"APP_NAME" => "VylarisGroup Webspace",
+			"APP_NAME" => "VylarisSpace",
 			"TITLE" => "{{page}} - {{appname}}",
 			"VERSION" => "1.10.5",
 			"RELEASE_BRANCH" => "release",

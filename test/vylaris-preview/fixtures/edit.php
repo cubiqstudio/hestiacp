@@ -331,10 +331,10 @@ return [
 	},
 	"edit_whitelabel" => function (): array {
 		return [
-			"v_app_name" => "VylarisGroup Webspace",
+			"v_app_name" => "VylarisSpace",
 			"v_title" => "{{page}} - {{hostname}} - {{appname}}",
 			"v_hide_docs" => "no",
-			"v_from_name" => "VylarisGroup Webspace",
+			"v_from_name" => "VylarisSpace",
 			"v_from_email" => "noreply@vylaris-group.eu",
 			"v_subject_email" => "{{subject}}",
 		];
