@@ -158,6 +158,7 @@ systemctl list-units --type=service --state=running --no-legend --plain 2> /dev/
 # ---- health: does everything still work? ----
 {
 	echo "panel login page: $(curl -sk -o /dev/null -w '%{http_code}' --max-time 10 https://127.0.0.1:8083/login/)"
+	echo "login page custom logo: $(curl -sk --max-time 10 https://127.0.0.1:8083/login/ | grep -c 'src="/images/custom/logo.svg"')"
 	echo "nginx -t: $(nginx -t 2>&1 | tail -1)"
 	if command -v named-checkconf > /dev/null; then echo "named-checkconf: rc=$(
 		named-checkconf > /dev/null 2>&1

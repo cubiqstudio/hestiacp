@@ -1,7 +1,7 @@
 <div class="login">
 	<a href="/" class="u-block u-mb40">
-		<img class="logo-mark logo-mark--login logo-mark--on-light" src="/images/vylaris/logo-mark-on-light.svg" alt="<?= tohtml($_SESSION["APP_NAME"]) ?>" width="108" height="72">
-		<img class="logo-mark logo-mark--login logo-mark--on-dark" src="/images/vylaris/logo-mark-on-dark.svg" alt="<?= tohtml($_SESSION["APP_NAME"]) ?>" width="108" height="72">
+		<img class="logo-mark logo-mark--login logo-mark--on-light" src="<?= brand_logo_url('light') ?>" alt="<?= tohtml($_SESSION["APP_NAME"]) ?>" width="108" height="72">
+		<img class="logo-mark logo-mark--login logo-mark--on-dark" src="<?= brand_logo_url('dark') ?>" alt="<?= tohtml($_SESSION["APP_NAME"]) ?>" width="108" height="72">
 	</a>
 	<form method="post">
 		<h1 class="login-title">

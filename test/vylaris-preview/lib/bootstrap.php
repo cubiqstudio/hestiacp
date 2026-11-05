@@ -127,6 +127,9 @@ namespace {
 			"legacy_themes",
 			"visible_themes",
 			"resolve_theme",
+			"brand_custom_file",
+			"brand_logo_url",
+			"brand_favicon_links",
 		],
 		1,
 	);

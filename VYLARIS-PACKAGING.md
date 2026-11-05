@@ -644,9 +644,11 @@ Values that contain `#` are kept. The duplicate-key repair of `func/syshealth.sh
 values byte for byte, merges duplicated keys (the last value wins) and passes comment lines through
 (`test/vylaris-upgrade-unit/hestia-conf-normalize.sh`, 4 checks).
 
-The whitelabel logos have a separate limit: the panel templates reference `/images/vylaris/*` directly
-(`web/templates/includes/css.php`, `panel.php`), so files in `web/images/custom` do not change what the panel
-pages show today. They are preserved, but not used there.
+Own logos: put `logo.svg` (and optionally `favicon.png`) into `web/images/custom`. The panel pages (login, top
+bar, server info, log view, favicon) use them when they exist (`brand_logo_url()` and `brand_favicon_links()` in
+`web/inc/helpers.php`) and fall back to the shipped Vylaris artwork. One custom `logo.svg` serves the light and
+the dark theme, so draw it so that it is readable on both backgrounds. The files are not part of the package and
+survive updates; the update test checks that the login page still shows the custom logo afterwards.
 
 ### 15.2 Replaced by every update
 

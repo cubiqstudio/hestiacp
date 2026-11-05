@@ -106,6 +106,7 @@ ok "custom theme, custom script and custom logos unchanged" bash -c "[ \"$(col "
 
 echo "## health after the update"
 ok "panel login page answers 200" grep -q '^panel login page: 200' "$A/health.txt"
+ok "login page shows the owner's custom logo (web/images/custom/logo.svg)" grep -q '^login page custom logo: [1-9]' "$A/health.txt"
 ok "customer site answers with its marker" grep -q 'customer site http : SEED-MARKER' "$A/health.txt"
 ok "customer own nginx include still served" grep -qi 'x-customer-include-ssl' "$A/health.txt"
 ok "customer database rows identical" cmp -s "$B/db-content.txt" "$A/db-content.txt"

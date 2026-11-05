@@ -10,8 +10,8 @@
 
 				<!-- Logo / Home Button -->
 				<a href="/" class="top-bar-logo" title="<?= htmlentities($_SESSION["APP_NAME"]) ?>">
-					<img class="logo-mark logo-mark--on-light" src="/images/vylaris/logo-mark-on-light.svg" alt="" width="36" height="24">
-					<img class="logo-mark logo-mark--on-dark" src="/images/vylaris/logo-mark-on-dark.svg" alt="" width="36" height="24">
+					<img class="logo-mark logo-mark--on-light" src="<?= brand_logo_url('light') ?>" alt="" width="36" height="24">
+					<img class="logo-mark logo-mark--on-dark" src="<?= brand_logo_url('dark') ?>" alt="" width="36" height="24">
 					<span class="top-bar-logo-text"><?= htmlentities($_SESSION["APP_NAME"]) ?></span>
 				</a>
 

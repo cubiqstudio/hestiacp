@@ -179,6 +179,36 @@ function display_title($tab) {
 	return str_replace($array1, $array2, $_SESSION["TITLE"]);
 }
 
+// White label: files in web/images/custom replace the shipped artwork. They are not part of the
+// package, so an update leaves them alone. A custom logo.svg is used for the light and the dark
+// mode (the template shows only the image that fits the active mode). The shipped logos are used
+// when no custom file exists.
+function brand_custom_file($name) {
+	return is_file(dirname(__DIR__) . "/images/custom/" . $name);
+}
+
+function brand_logo_url($mode) {
+	if (brand_custom_file("logo.svg")) {
+		return "/images/custom/logo.svg";
+	}
+	return $mode === "dark"
+		? "/images/vylaris/logo-mark-on-dark.svg"
+		: "/images/vylaris/logo-mark-on-light.svg";
+}
+
+function brand_favicon_links() {
+	if (brand_custom_file("favicon.png")) {
+		return '<link rel="icon" href="/images/custom/favicon.png" type="image/png">' .
+			"\n" .
+			'<link rel="apple-touch-icon" href="/images/custom/favicon.png">';
+	}
+	return '<link rel="icon" href="/images/vylaris/favicon.svg" type="image/svg+xml">' .
+		"\n" .
+		'<link rel="alternate icon" href="/images/vylaris/favicon.png" type="image/png">' .
+		"\n" .
+		'<link rel="apple-touch-icon" href="/images/vylaris/apple-touch-icon.png">';
+}
+
 // Returns the URL of a documentation page, or an empty string when no link must be shown.
 // No documentation site is configured for this product, so the result is always empty;
 // templates must hide the link (or "More info" text) when it is empty.
