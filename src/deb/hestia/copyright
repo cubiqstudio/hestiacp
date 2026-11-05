@@ -1,11 +1,12 @@
 Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
 Upstream-Name: hestia
-Source: https://www.hestiacp.com
+Source: VylarisSpace, a modified version of the HestiaCP source code (credits are in the NOTICE file of the source tree)
 
 Files: *
-Copyright: 2018-2025, Hestia Control Panel <info@hestiacp.com>
+Copyright: 2018-2025, the HestiaCP authors
+ VylarisGroupEurope (modifications for VylarisSpace)
 License: GPL-3.0+
-Remarks: Hestia Control Panel is a fork from VestaCP, special thanks to vestacp.com and Serghey Rodin
+Remarks: VylarisSpace is a modified version of HestiaCP, which is a fork from VestaCP, special thanks to vestacp.com and Serghey Rodin
 
 License: GPL-3.0+
  This program is free software: you can redistribute it and/or modify

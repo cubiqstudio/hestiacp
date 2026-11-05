@@ -1,0 +1,61 @@
+#!/bin/bash
+# info: add cron job for automatic updates from the own package source
+# options: NONE
+#
+# example: v-add-cron-vylaris-autoupdate
+#
+# This function adds a daily cron job that runs v-update-sys-vylaris. It only
+# works when VYLARIS_UPDATES='yes' is set in hestia.conf.
+
+#----------------------------------------------------------#
+#                Variables & Functions                     #
+#----------------------------------------------------------#
+
+# Includes
+# shellcheck source=/etc/hestiacp/hestia.conf
+source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/hestia/func/main.sh
+source $HESTIA/func/main.sh
+# load config file
+source_conf "$HESTIA/conf/hestia.conf"
+
+if [ "${VYLARIS_UPDATES:-no}" != "yes" ]; then
+	echo "Own updates are disabled (VYLARIS_UPDATES=no)"
+	exit 0
+fi
+
+#----------------------------------------------------------#
+#                    Verifications                         #
+#----------------------------------------------------------#
+
+is_system_enabled "$CRON_SYSTEM" 'CRON_SYSTEM'
+if grep -q 'v-update-sys-vylaris' "/var/spool/cron/crontabs/hestiaweb" 2> /dev/null; then
+	exit
+fi
+
+# Perform verification if read-only mode is enabled
+check_hestia_demo_mode
+
+#----------------------------------------------------------#
+#                       Action                             #
+#----------------------------------------------------------#
+
+# Define time somewhere at night
+min=$(generate_password '012345' '2')
+hour=$(generate_password '1234567' '1')
+
+sed -i -e "\$a$min $hour * * * sudo /usr/local/hestia/bin/v-update-sys-vylaris" "/var/spool/cron/crontabs/hestiaweb"
+
+#----------------------------------------------------------#
+#                       Hestia                             #
+#----------------------------------------------------------#
+
+# Restarting cron
+$BIN/v-restart-cron
+check_result $? "Cron restart failed" > /dev/null
+
+# Logging
+$BIN/v-log-action "system" "Info" "Updates" "Automatic updates enabled."
+log_event "$OK" "$ARGUMENTS"
+
+exit

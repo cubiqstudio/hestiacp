@@ -160,7 +160,7 @@ function fx_auth_log(): array {
 	return $data;
 }
 
-function fx_updates(): array {
+function fx_updates(string $variant = ""): array {
 	$data = [];
 	$rows = [
 		["hestia", "VylarisSpace core package", "1.10.5", "yes"],
@@ -174,7 +174,16 @@ function fx_updates(): array {
 			"VERSION" => $version,
 			"ARCH" => "amd64",
 			"UPDATED" => $updated,
+			"CANDIDATE" => "",
+			"AUTOUPDATE" => "",
 		];
+	}
+	// Own package source (VYLARIS_UPDATES=yes): only the panel package is tracked
+	if (str_starts_with($variant, "own")) {
+		$data["hestia"]["VERSION"] = "1.10.5-100+ubuntu24.04";
+		$data["hestia"]["UPDATED"] = $variant === "own-available" ? "no" : "yes";
+		$data["hestia"]["CANDIDATE"] = $variant === "own-available" ? "1.10.6-100+ubuntu24.04" : "";
+		$data["hestia"]["AUTOUPDATE"] = $variant === "own-available" ? "no" : "yes";
 	}
 	return $data;
 }
@@ -298,7 +307,7 @@ return [
 		return ["data" => fx_auth_log()];
 	},
 	"list_updates" => function (string $variant): array {
-		return ["data" => fx_updates(), "autoupdate" => $variant === "auto" ? "yes" : "no"];
+		return ["data" => fx_updates($variant), "autoupdate" => $variant === "auto" ? "yes" : "no"];
 	},
 	"list_search" => function (string $variant): array {
 		$_GET["q"] = "vylaris";

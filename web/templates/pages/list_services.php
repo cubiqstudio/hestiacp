@@ -8,7 +8,7 @@
 			<a href="/list/rrd/" class="button button-secondary">
 				<i class="fas fa-chart-area icon-blue"></i><?= tohtml( _("Task Monitor")) ?>
 			</a>
-			<?php if (($_SESSION["UPSTREAM_UPDATES"] ?? "no") === "yes") { ?>
+			<?php if (($_SESSION["UPSTREAM_UPDATES"] ?? "no") === "yes" || ($_SESSION["VYLARIS_UPDATES"] ?? "no") === "yes") { ?>
 				<a href="/list/updates/" class="button button-secondary">
 					<i class="fas fa-arrows-rotate icon-green"></i><?= tohtml( _("Updates")) ?>
 				</a>

@@ -1,0 +1,343 @@
+#!/bin/bash
+# info: update the panel from the own package source
+# options: [MODE]
+#
+# example: v-update-sys-vylaris
+# example: v-update-sys-vylaris check
+#
+# This function updates the package hestia from the own VylarisSpace package
+# source (/etc/apt/sources.list.d/vylarisspace.list) and from nowhere else.
+# It only works when VYLARIS_UPDATES='yes' is set in hestia.conf, and it refuses
+# to do anything (except 'status') when the apt pin file
+# /etc/apt/preferences.d/vylarisspace is missing or incomplete: that file keeps
+# the package hestia away from every other source (the upstream repository
+# included) and is not owned by a package.
+#
+# MODE is one of:
+#   install     refresh the own package source and install a newer hestia
+#               package (default)
+#   check       refresh the own package source and report the versions, no
+#               installation
+#   background  same as install, but started as a separate system unit so that
+#               the restart of the panel at the end of the upgrade cannot
+#               interrupt it (used by the web interface)
+#   status      no network access, print the versions known from the last
+#               refresh and pin_ok=yes|no (state of the apt pin file) as
+#               key=value lines
+#
+# The upgrade itself (configuration migration, service restarts, optional
+# e-mail notification) is done by the package scripts of hestia.
+
+#----------------------------------------------------------#
+#                Variables & Functions                     #
+#----------------------------------------------------------#
+
+# Argument definition
+mode=${1-install}
+
+# Includes
+# shellcheck source=/etc/hestiacp/hestia.conf
+source /etc/hestiacp/hestia.conf
+# shellcheck source=/usr/local/hestia/func/main.sh
+source $HESTIA/func/main.sh
+# load config file
+source_conf "$HESTIA/conf/hestia.conf"
+
+# The own update channel is opt-in (installers set it when a package source was
+# configured). Anything but 'yes' keeps the server untouched.
+if [ "${VYLARIS_UPDATES:-no}" != "yes" ]; then
+	echo "Own updates are disabled (VYLARIS_UPDATES=no)"
+	exit 0
+fi
+
+app_name="${APP_NAME:-VylarisSpace}"
+own_list="/etc/apt/sources.list.d/vylarisspace.list"
+pin_file="/etc/apt/preferences.d/vylarisspace"
+# Host of the upstream repository, pinned away for package hestia
+upstream_host="apt.hestiacp.com"
+update_log="$HESTIA/log/vylaris-update.log"
+lock_file="/var/lock/vylaris-update.lock"
+
+# URL of the own package source: first "deb" line of the source list, without
+# the [options]
+vylaris_list_url() {
+	awk '$1 == "deb" {
+		for (i = 2; i <= NF; i++) {
+			if ($i ~ /^\[/) {
+				while ($i !~ /\]$/ && i < NF) {
+					i++
+				}
+				continue
+			}
+			print $i
+			exit
+		}
+	}' "$own_list" 2> /dev/null
+}
+
+# Checks the apt pin file against the own source list. It must contain exactly
+# these stanzas for the package hestia, in this order (apt uses the first one
+# that matches, see src/vylaris/client-setup.sh):
+#   origin <upstream host>               -1
+#   release o=<upstream host>            -1
+#   origin <host of the own source>      1001   (origin "" for a file:// source)
+#   origin *                             -1
+# A deleted or edited file would leave the update to the version comparison and
+# a newer upstream package (same name) could replace this fork.
+vylaris_pin_ok() {
+	local url rest host own_pin want got
+	[ -f "$pin_file" ] || return 1
+	url=$(vylaris_list_url)
+	case "$url" in
+		file://*) own_pin='origin ""' ;;
+		http://* | https://*)
+			rest=${url#*://}
+			host=${rest%%/*}
+			host=${host%%:*}
+			[ -n "$host" ] || return 1
+			own_pin="origin $host"
+			;;
+		*) return 1 ;;
+	esac
+	want="origin $upstream_host|-1
+release o=$upstream_host|-1
+$own_pin|1001
+origin *|-1"
+	got=$(awk '
+		function flush() {
+			if (pkg == "hestia") {
+				print pin "|" prio
+			}
+			pkg = ""
+			pin = ""
+			prio = ""
+		}
+		/^[ \t]*#/ { next }
+		/^[ \t]*$/ { flush(); next }
+		{
+			key = $0
+			sub(/:.*/, "", key)
+			val = $0
+			sub(/^[^:]*:[ \t]*/, "", val)
+			gsub(/[ \t]+$/, "", val)
+			gsub(/[ \t]+/, " ", val)
+			if (key == "Package") {
+				pkg = val
+			} else if (key == "Pin") {
+				pin = val
+			} else if (key == "Pin-Priority") {
+				prio = val
+			}
+		}
+		END { flush() }
+	' "$pin_file" 2> /dev/null)
+	[ "$got" = "$want" ]
+}
+
+# Reads "apt-cache policy hestia" and sets
+#   v_installed  installed version (empty when not installed)
+#   v_candidate  version apt would install (empty when none)
+#   v_origin     own      every source of the candidate is the own package source
+#                foreign  the candidate is offered by another source as well
+#                none     no source (candidate unknown or only the installed package)
+#   v_available  yes when the candidate comes from the own source and is newer
+# The per-package output names the sources of a version ("500 <uri> <suite/component>
+# <arch> Packages"). A source is the own one when its URI is the URL of the own
+# source list or below it (the exact scheme-less text, so https://repo.example.evil
+# is not https://repo.example). apt prints file:// sources as file:/path.
+vylaris_policy() {
+	local policy own_url want cand_keys key uri
+	policy=$(LC_ALL=C apt-cache policy hestia 2> /dev/null)
+	v_installed=$(echo "$policy" | awk '/^ +Installed:/ {print $2; exit}')
+	v_candidate=$(echo "$policy" | awk '/^ +Candidate:/ {print $2; exit}')
+	[ "$v_installed" = "(none)" ] && v_installed=''
+	[ "$v_candidate" = "(none)" ] && v_candidate=''
+
+	v_origin='none'
+	if [ -n "$v_candidate" ]; then
+		own_url=$(vylaris_list_url)
+		want=${own_url#*://}
+		want=${want#/}
+		want=${want%/}
+		# Sources of the candidate version (version table: a version line with a
+		# 5 character prefix, followed by one line per source)
+		cand_keys=$(echo "$policy" | awk -v cand="$v_candidate" '
+			/^( \*\*\* |     )[^ ]/ {
+				line = $0
+				sub(/^( \*\*\* |     )/, "", line)
+				split(line, a, " ")
+				incand = (a[1] == cand)
+				next
+			}
+			incand && /^ +[0-9]+ / && $0 !~ /\/var\/lib\/dpkg\/status/ {
+				key = $0
+				sub(/^ +[0-9]+ /, "", key)
+				print key
+			}')
+		if [ -n "$cand_keys" ] && [ -n "$want" ]; then
+			v_origin='own'
+			while IFS= read -r key; do
+				uri=${key%% *}
+				uri=${uri#*:}
+				while [ "${uri#/}" != "$uri" ]; do
+					uri=${uri#/}
+				done
+				if [ "$uri" != "$want" ] && [ "${uri#"$want"/}" = "$uri" ]; then
+					v_origin='foreign'
+				fi
+			done <<< "$cand_keys"
+		elif [ -n "$cand_keys" ]; then
+			v_origin='foreign'
+		fi
+	fi
+
+	v_available='no'
+	if [ -n "$v_installed" ] && [ -n "$v_candidate" ] && [ "$v_origin" = "own" ]; then
+		if dpkg --compare-versions "$v_candidate" gt "$v_installed"; then
+			v_available='yes'
+		fi
+	fi
+}
+
+#----------------------------------------------------------#
+#                    Verifications                         #
+#----------------------------------------------------------#
+
+case "$mode" in
+	install | check | status | background) ;;
+	*) check_result "$E_INVALID" "invalid MODE format :: $mode" ;;
+esac
+
+# Perform verification if read-only mode is enabled
+if [ "$mode" != "status" ]; then
+	check_hestia_demo_mode
+fi
+
+# Without the own package source there is nothing to update from
+if [ ! -f "$own_list" ]; then
+	if [ "$mode" = "status" ]; then
+		echo "source=missing"
+		echo "pin_ok=no"
+		exit 0
+	fi
+	check_result "$E_NOTEXIST" "package source $own_list not found, configure it first"
+fi
+
+# Without the pin file the version comparison alone decides which package wins,
+# and a newer upstream package of the same name would replace this fork. Refuse
+# everything that could install (status only reports it).
+pin_ok='yes'
+if ! vylaris_pin_ok; then
+	pin_ok='no'
+	if [ "$mode" != "status" ]; then
+		"$BIN/v-log-action" "system" "Warning" "Updates" "Update refused, the apt pin file $pin_file is missing or incomplete."
+		check_result "$E_FORBIDEN" "apt pin file $pin_file is missing or incomplete, update refused (it keeps the package hestia away from other sources; restore it with src/vylaris/client-setup.sh)"
+	fi
+fi
+
+#----------------------------------------------------------#
+#                       Action                             #
+#----------------------------------------------------------#
+
+# Status from the lists of the last refresh, no network
+if [ "$mode" = "status" ]; then
+	vylaris_policy
+	if [ "$pin_ok" != "yes" ]; then
+		v_available='no'
+	fi
+	echo "source=present"
+	echo "pin_ok=$pin_ok"
+	echo "installed=$v_installed"
+	echo "candidate=$v_candidate"
+	echo "origin=$v_origin"
+	echo "available=$v_available"
+	exit 0
+fi
+
+# Detached start: the upgrade restarts the panel services at its end, which must
+# not stop the update itself when it was started from the web interface
+if [ "$mode" = "background" ]; then
+	unit="vylaris-update-$(date +%s)"
+	if ! systemd-run --quiet --collect --unit="$unit" "$BIN/v-update-sys-vylaris" install > /dev/null 2>&1; then
+		setsid nohup "$BIN/v-update-sys-vylaris" install > /dev/null 2>&1 < /dev/null &
+	fi
+	echo "Update started in the background, see the system log for the result"
+	exit 0
+fi
+
+# One update at a time (cron job and button)
+exec 9> "$lock_file"
+if ! flock -n 9; then
+	echo "Another update is already running"
+	exit 0
+fi
+
+# Refresh only the own package source
+apt-get update -o Dir::Etc::sourcelist="$own_list" \
+	-o Dir::Etc::sourceparts="-" -o APT::Get::List-Cleanup="0" \
+	-o APT::Update::Error-Mode="any" -qq > /dev/null 2>&1 9>&-
+check_result $? "package source could not be refreshed" "$E_UPDATE"
+
+vylaris_policy
+
+if [ -z "$v_installed" ]; then
+	check_result "$E_NOTEXIST" "package hestia is not installed"
+fi
+
+if [ -z "$v_candidate" ] || ! dpkg --compare-versions "$v_candidate" gt "$v_installed"; then
+	echo "$app_name is up to date ($v_installed)"
+	if [ "$mode" = "check" ]; then
+		echo "installed=$v_installed"
+		echo "candidate=$v_candidate"
+		echo "available=no"
+	fi
+	log_event "$OK" "$ARGUMENTS"
+	exit 0
+fi
+
+# A newer version that the own package source does not offer exclusively would
+# replace this server with another build. Never install it.
+if [ "$v_origin" != "own" ]; then
+	$BIN/v-log-action "system" "Warning" "Updates" "Update to $v_candidate refused, the package is not offered by the own package source only."
+	check_result "$E_FORBIDEN" "hestia $v_candidate is not offered by the own package source only, update refused (check $pin_file)"
+fi
+
+if [ "$mode" = "check" ]; then
+	echo "Update available: $v_installed -> $v_candidate"
+	echo "installed=$v_installed"
+	echo "candidate=$v_candidate"
+	echo "available=yes"
+	log_event "$OK" "$ARGUMENTS"
+	exit 0
+fi
+
+# The pin file is checked once more right before the installation
+if ! vylaris_pin_ok; then
+	check_result "$E_FORBIDEN" "apt pin file $pin_file is missing or incomplete, update refused"
+fi
+
+$BIN/v-log-action "system" "Info" "Updates" "Updating $app_name from $v_installed to $v_candidate."
+
+# Install the update, the apt output is kept in a log file
+mkdir -p "$(dirname "$update_log")"
+echo "=== $(date +'%F %T') $v_installed -> $v_candidate" >> "$update_log"
+# The exact version that was checked above (own source, pin file intact)
+DEBIAN_FRONTEND=noninteractive apt-get install --only-upgrade -y -q \
+	-o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" \
+	-o DPkg::Lock::Timeout="120" "hestia=$v_candidate" >> "$update_log" 2>&1 9>&-
+result=$?
+if [ "$result" -ne 0 ]; then
+	$BIN/v-log-action "system" "Error" "Updates" "Update to $v_candidate failed, see $update_log."
+fi
+check_result $result "update to $v_candidate failed, see $update_log" "$E_UPDATE"
+
+echo "$app_name updated to $v_candidate"
+
+#----------------------------------------------------------#
+#                       Hestia                             #
+#----------------------------------------------------------#
+
+# Logging
+log_event "$OK" "$ARGUMENTS"
+
+exit

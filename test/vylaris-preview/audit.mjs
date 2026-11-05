@@ -13,6 +13,7 @@ import os from "node:os";
 import path from "node:path";
 import { parseArgs } from "node:util";
 import { colorLib, loadPalette, pageAudit } from "./audit-lib.mjs";
+import { COMPARED, compareReports, GROUP_ID } from "./lib/compare.mjs";
 import {
 	createContexts,
 	keyOf,
@@ -26,7 +27,6 @@ import {
 	selectPages,
 	watchPage,
 } from "./lib/harness.mjs";
-import { COMPARED, compareReports, GROUP_ID } from "./lib/compare.mjs";
 import { previewRoot } from "./lib/php.mjs";
 import { startServer } from "./lib/server.mjs";
 import { FAKE_WEBSOCKET } from "./lib/steps.mjs";

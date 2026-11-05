@@ -40,6 +40,8 @@ test/vendor/
 web/inc/vendor/
 # Quick install
 web/src/vendor/
+# Package build: download cache of src/hst_autocompile.sh
+src/archive/
 .phpunit.result.cache
 
 # vitepress build output

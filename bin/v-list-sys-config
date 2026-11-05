@@ -111,6 +111,7 @@ json_list() {
 		"UPSTREAM_UPDATES": "'${UPSTREAM_UPDATES:-no}'",
 		"USE_SERVER_SMTP": "'$USE_SERVER_SMTP'",
 		"VERSION": "'$VERSION'",
+		"VYLARIS_UPDATES": "'${VYLARIS_UPDATES:-no}'",
 		"WEBMAIL_ALIAS": "'$WEBMAIL_ALIAS'",
 		"WEBMAIL_SYSTEM": "'$WEBMAIL_SYSTEM'",
 		"WEB_BACKEND": "'$WEB_BACKEND'",
@@ -238,6 +239,7 @@ shell_list() {
 	echo "Updates: Notify by email:         $UPGRADE_SEND_EMAIL"
 	echo "Updates: Email install log:       $UPGRADE_SEND_EMAIL_LOG"
 	echo "Updates: Upstream channels:       ${UPSTREAM_UPDATES:-no}"
+	echo "Updates: Own package source:      ${VYLARIS_UPDATES:-no}"
 }
 
 # PLAIN list function

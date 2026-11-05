@@ -252,6 +252,15 @@ function syshealth_migrate_upstream_updates() {
 	fi
 }
 
+# Own package source update channel (v-update-sys-vylaris), off unless an
+# installer or the administrator switches it on after configuring the source
+function syshealth_migrate_vylaris_updates() {
+	if [[ -z $(grep -e "^VYLARIS_UPDATES=" "$HESTIA/conf/hestia.conf") ]]; then
+		echo "[ ! ] Adding missing variable to hestia.conf: VYLARIS_UPDATES ('no')"
+		$BIN/v-change-sys-config-value "VYLARIS_UPDATES" "no"
+	fi
+}
+
 # Restore System Configuration
 # Replaces $HESTIA/conf/hestia.conf with "known good defaults" file ($HESTIA/conf/defaults/hestia.conf)
 function syshealth_restore_system_config() {
@@ -262,6 +271,7 @@ function syshealth_restore_system_config() {
 		# Snapshots taken on older installs must not bring back the upstream defaults
 		syshealth_migrate_app_name
 		syshealth_migrate_upstream_updates
+		syshealth_migrate_vylaris_updates
 	else
 		echo "ERROR: System default configuration file not found, aborting."
 		exit 1
@@ -581,6 +591,7 @@ function syshealth_repair_system_config() {
 	# Upstream update channels (apt.hestiacp.com, GitHub) would replace this fork
 	# with upstream HestiaCP, they stay off unless explicitly enabled
 	syshealth_migrate_upstream_updates
+	syshealth_migrate_vylaris_updates
 
 	if [[ -z $(check_key_exists 'POLICY_SYNC_ERROR_DOCUMENTS') ]]; then
 		echo "[ ! ] Adding missing variable to hestia.conf: POLICY_SYNC_ERROR_DOCUMENTS ('yes')"
@@ -633,6 +644,8 @@ function syshealth_repair_system_config() {
 # Repair System Cron Jobs
 # Add default cron jobs to "hestiaweb" user account's cron tab
 function syshealth_repair_system_cronjobs() {
+	# Keep the automatic update job of the own package source if it was enabled
+	own_update_cron=$(grep 'v-update-sys-vylaris' /var/spool/cron/crontabs/hestiaweb 2> /dev/null | head -n 1)
 	min=$(gen_pass '012345' '2')
 	hour=$(gen_pass '1234567' '1')
 	echo "MAILTO=$email" > /var/spool/cron/crontabs/hestiaweb
@@ -650,6 +663,9 @@ function syshealth_repair_system_cronjobs() {
 	# Daily upstream update job, only installed when upstream updates are enabled
 	if [ "${UPSTREAM_UPDATES:-no}" = "yes" ]; then
 		echo "41 4 * * * sudo /usr/local/hestia/bin/v-update-sys-hestia-all" >> /var/spool/cron/crontabs/hestiaweb
+	fi
+	if [ "${VYLARIS_UPDATES:-no}" = "yes" ] && [ -n "$own_update_cron" ]; then
+		echo "$own_update_cron" >> /var/spool/cron/crontabs/hestiaweb
 	fi
 }
 

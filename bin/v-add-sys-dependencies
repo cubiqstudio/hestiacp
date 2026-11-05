@@ -2,7 +2,14 @@
 # Add php dependencies to Hestia
 # options: [MODE]
 #
-# This function install PHPMailer and quoteshellarg as via composer
+# This function installs the PHP dependencies of the panel (PHPMailer, quoteshellarg,
+# two-factor authentication, QR code, ...) via composer.
+#
+# The VylarisSpace package ships these dependencies ready to use in
+# web/inc/vendor and web/src/vendor. When a vendor folder is complete (it holds every
+# package of composer.lock in the locked version) it is left alone and neither
+# Composer nor any network access is needed. On a source install, or when a vendor
+# folder is missing or incomplete, the dependencies are installed with composer.
 
 #----------------------------------------------------------#
 #                Variables & Functions                     #
@@ -46,17 +53,37 @@ if [ -z "$HOMEDIR" ] || [ -z "$HESTIA_INSTALL_DIR" ]; then
 	exit 2
 fi
 
-# Ensure that Composer is installed for the user before continuing as it is a dependency of the PHPMailer.
-if [ ! -f "$COMPOSER_BIN" ]; then
-	$BIN/v-add-user-composer "$user"
-	if [ $? -ne 0 ]; then
-		$BIN/v-add-user-notification "$ROOT_USER" 'Composer installation failed!' '<p class="u-text-bold">'"$app_name"' will not work without Composer.</p><p>Please try running the installer manually from a shell session:<br><code>v-add-sys-dependencies</code></p>'
-		exit 1
-	fi
-fi
+#----------------------------------------------------------#
+#                Functions                                 #
+#----------------------------------------------------------#
 
-# Perform verification if read-only mode is enabled
-check_hestia_demo_mode
+# Succeeds when <dir>/vendor holds every package of <dir>/composer.lock (non-dev) in
+# exactly the locked version, plus the composer autoloader.
+vendor_complete() {
+	local dir=$1
+	local lock="$dir/composer.lock"
+	local installed="$dir/vendor/composer/installed.json"
+	local name
+
+	[ -f "$dir/vendor/autoload.php" ] || return 1
+	[ -f "$lock" ] && [ -f "$installed" ] || return 1
+	command -v jq > /dev/null 2>&1 || return 1
+
+	# Locked packages that are not installed in the locked version
+	local wrong
+	wrong=$(jq -rs '
+		((.[1].packages // []) | map({(.name): .version}) | add // {}) as $inst
+		| [(.[0].packages // [])[] | select($inst[.name] != .version) | .name] | length
+	' "$lock" "$installed" 2> /dev/null) || return 1
+	[ "$wrong" = "0" ] || return 1
+
+	# Every locked package has to exist on disk
+	while IFS= read -r name; do
+		[ -n "$name" ] || continue
+		[ -d "$dir/vendor/$name" ] || return 1
+	done < <(jq -r '(.packages // [])[].name' "$lock" 2> /dev/null)
+	return 0
+}
 
 #----------------------------------------------------------#
 #                       Action                             #
@@ -67,6 +94,33 @@ exec 9> /run/hestia-sys-dependencies.lock
 check_result $? "Unable to create dependencies lock file"
 flock -w 600 9
 check_result $? "Unable to acquire dependencies lock"
+
+# Only the folders without a complete vendor need Composer
+pending_dirs=()
+for dir in "$PM_INSTALL_DIR" "$QUICK_INSTALL_DIR"; do
+	if ! vendor_complete "$dir"; then
+		pending_dirs+=("$dir")
+	fi
+done
+
+if [ ${#pending_dirs[@]} -eq 0 ]; then
+	echo "PHP dependencies are already complete, Composer is not needed."
+	$BIN/v-log-action "system" "Info" "Plugins" "PHP dependencies already complete, nothing to install"
+	log_event "$OK" "$ARGUMENTS"
+	exit 0
+fi
+
+# Perform verification if read-only mode is enabled
+check_hestia_demo_mode
+
+# Ensure that Composer is installed for the user before continuing as it is a dependency of the PHPMailer.
+if [ ! -f "$COMPOSER_BIN" ]; then
+	$BIN/v-add-user-composer "$user"
+	if [ $? -ne 0 ]; then
+		$BIN/v-add-user-notification "$ROOT_USER" 'Composer installation failed!' '<p class="u-text-bold">'"$app_name"' will not work without Composer.</p><p>Please try running the installer manually from a shell session:<br><code>v-add-sys-dependencies</code></p>'
+		exit 1
+	fi
+fi
 
 openssl_installed=$(/usr/local/hestia/php/bin/php -m | grep openssl)
 
@@ -106,7 +160,7 @@ install_dependencies() {
 }
 
 # Check if installation was successful, if not abort script and throw error message notification
-if ! install_dependencies "$PM_INSTALL_DIR"; then
+if [[ " ${pending_dirs[*]} " == *" $PM_INSTALL_DIR "* ]] && ! install_dependencies "$PM_INSTALL_DIR"; then
 	echo "ERROR: PHPMailer installation failed!"
 	$BIN/v-add-user-notification "$ROOT_USER" 'PHP dependencies installation failed!' '<p>The PHP dependencies required by '"$app_name"' could not be installed. Please check the system log for details.</p>'
 	if [ -f "$PM_INSTALL_DIR/vendor/autoload.php" ]; then
@@ -118,7 +172,7 @@ if ! install_dependencies "$PM_INSTALL_DIR"; then
 	exit 1
 fi
 
-if ! install_dependencies "$QUICK_INSTALL_DIR"; then
+if [[ " ${pending_dirs[*]} " == *" $QUICK_INSTALL_DIR "* ]] && ! install_dependencies "$QUICK_INSTALL_DIR"; then
 	echo "ERROR: Quick install dependencies installation failed!"
 	$BIN/v-add-user-notification "$ROOT_USER" 'Quick Install dependencies installation failed!' '<p>The Quick Install dependencies required by '"$app_name"' could not be installed. Please check the system log for details.</p>'
 	if [ -f "$QUICK_INSTALL_DIR/vendor/autoload.php" ]; then
@@ -132,5 +186,5 @@ fi
 #                       Logging                            #
 #----------------------------------------------------------#
 
-$BIN/v-log-action "system" "Info" "Plugins" "PHPMailer enabled (Version: $pm_v)."
+$BIN/v-log-action "system" "Info" "Plugins" "PHP dependencies installed"
 log_event "$OK" "$ARGUMENTS"

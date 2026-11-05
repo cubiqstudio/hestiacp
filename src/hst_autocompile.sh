@@ -1,15 +1,38 @@
 #!/bin/bash
 
 # set -e
-# Autocompile Script for HestiaCP package Files.
-# For building from local source folder use "~localsrc" keyword as hesia branch name,
-#   and the script will not try to download the arhive from github, since '~' char is
-#   not accepted in branch name.
+# Autocompile Script for the VylarisSpace package files.
+#
+# Stage 1 (own package repository, see VYLARIS-PACKAGING.md): only the 'hestia'
+# package (the panel: bin, func, install, web and the built assets) is built here
+# and published in the own repository. It is built from the local checkout:
+#   -> bash src/hst_autocompile.sh --hestia --noinstall --keepbuild --pkgrev 100 '~localsrc'
+# For building from the local source folder use the "~localsrc" keyword as branch name.
+# The script then does not download anything from a git hosting service (the '~' char
+# is not accepted in a branch name). The --hestia target REFUSES to build from a
+# remote branch unless HESTIA_SRC_REPO is set to a repository you control.
+#
+# Stage 2 (documented plan, not needed for stage 1): hestia-nginx, hestia-php and
+# hestia-web-terminal. Until then these packages keep coming from the upstream apt
+# repository. Their build targets below are unchanged; their upstream source
+# defaults (git hosting, nginx, php, openssl, pcre, zlib) can be overridden with
+# the environment variables listed in the "Source locations" block.
+#
+# Environment (all optional):
+#   BUILD_DIR   work directory (default /tmp/hestiacp-src)
+#   DEB_DIR     output directory for the .deb files (default $BUILD_DIR/deb)
+#   ARCHIVE_DIR download cache for source archives (default <checkout>/src/archive/)
+#
 # Compile but dont install -> ./hst_autocompile.sh --hestia --noinstall --keepbuild '~localsrc'
 # Compile and install -> ./hst_autocompile.sh --hestia --install '~localsrc'
 
-# Clear previous screen output
-clear
+# Never ask questions from apt/dpkg in unattended runs
+export DEBIAN_FRONTEND=noninteractive
+
+# Clear previous screen output (only on a terminal, so CI logs stay readable)
+if [ -t 1 ] && [ -n "$TERM" ]; then
+	clear
+fi
 
 # Define download function
 download_file() {
@@ -24,6 +47,7 @@ download_file() {
 	fi
 
 	[ "$HESTIA_DEBUG" ] && echo >&2 DEBUG: Downloading file "$url" to "$destination"
+	mkdir -p "$ARCHIVE_DIR"
 
 	# Default destination is the current working directory
 	local dstopt=""
@@ -85,7 +109,7 @@ get_branch_file() {
 			cp -f "$SRC_DIR/$filename" "$destination"
 		fi
 	else
-		download_file "https://raw.githubusercontent.com/$REPO/$branch/$filename" "$destination" $3
+		download_file "$RAW_BASE/$REPO/$branch/$filename" "$destination" $3
 	fi
 }
 
@@ -213,12 +237,27 @@ detect_pkg_from_elf() {
 	echo "$pkg"
 }
 
+# Source locations. These are only used when NOT building from '~localsrc' and for
+# the stage 2 packages (nginx, php, web-terminal), which download their sources.
+# Override them to use a mirror or an own repository.
+#   HESTIA_SRC_REPO      owner/name of the repository for non-local builds
+#   HESTIA_RAW_BASE      base URL for raw files   (default https://raw.githubusercontent.com)
+#   HESTIA_ARCHIVE_BASE  base URL for tarballs    (default https://github.com)
+#   NGINX_DIST_BASE, PHP_DIST_BASE, OPENSSL_DIST_BASE, PCRE_DIST_BASE, ZLIB_DIST_BASE
+REPO="${HESTIA_SRC_REPO:-hestiacp/hestiacp}"
+RAW_BASE="${HESTIA_RAW_BASE:-https://raw.githubusercontent.com}"
+ARCHIVE_BASE="${HESTIA_ARCHIVE_BASE:-https://github.com}"
+NGINX_DIST_BASE="${NGINX_DIST_BASE:-https://nginx.org/download}"
+PHP_DIST_BASE="${PHP_DIST_BASE:-http://de2.php.net/distributions}"
+OPENSSL_DIST_BASE="${OPENSSL_DIST_BASE:-https://github.com/openssl/openssl/releases/download}"
+PCRE_DIST_BASE="${PCRE_DIST_BASE:-https://github.com/PCRE2Project/pcre2/releases/download}"
+ZLIB_DIST_BASE="${ZLIB_DIST_BASE:-https://github.com/madler/zlib/archive/refs/tags}"
+
 # Set compiling directory
-REPO='hestiacp/hestiacp'
 BUILD_DIR="${BUILD_DIR:-/tmp/hestiacp-src}"
 INSTALL_DIR='/usr/local/hestia'
 SRC_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-ARCHIVE_DIR="$SRC_DIR/src/archive/"
+ARCHIVE_DIR="${ARCHIVE_DIR:-$SRC_DIR/src/archive/}"
 architecture="$(arch)"
 if [ $architecture == 'aarch64' ]; then
 	BUILD_ARCH='arm64'
@@ -237,7 +276,35 @@ build_deb() {
 		echo "Skipping .deb packing of $1 (will be packed outside the chroot)"
 		return 0
 	fi
-	dpkg-deb -Zxz --build "$1" "$DEB_DIR"
+	dpkg-deb -Zxz --root-owner-group --build "$1" "$DEB_DIR"
+}
+
+# Install the PHP dependencies of a web folder (web/inc, web/src) with Composer and
+# keep them in <dir>/vendor, so the package is complete and customer servers do not
+# need Composer, Packagist or GitHub (bin/v-add-sys-dependencies skips a complete vendor).
+bundle_php_vendor() {
+	local dir="$1"
+	if ! command -v composer > /dev/null 2>&1; then
+		echo >&2 "[!] composer not found. Install it (apt-get install composer) or run without --dontinstalldeps."
+		return 1
+	fi
+	rm -rf "$dir/vendor"
+	# --ignore-platform-reqs: the build host PHP is not the PHP that runs the panel
+	# (that is hestia-php), so the platform of the build host must not decide.
+	(cd "$dir" && COMPOSER_ALLOW_SUPERUSER=1 composer install --no-dev --no-interaction --prefer-dist --no-progress --ignore-platform-reqs) || return 1
+	if [ ! -f "$dir/vendor/autoload.php" ]; then
+		echo >&2 "[!] composer did not create $dir/vendor/autoload.php"
+		return 1
+	fi
+	# Composer falls back to git clones when a zip download is not possible: drop the history
+	find "$dir/vendor" \( -name .git -o -name .github \) -prune -exec rm -rf {} +
+	# Tests, docs and examples of the libraries are not needed at runtime
+	find "$dir/vendor" -mindepth 3 -maxdepth 3 -type d \( -iname tests -o -iname test -o -iname docs -o -iname examples \) -exec rm -rf {} +
+	# Development-only files of the libraries (documentation, changelogs, editor and git settings) are
+	# not shipped. Licence and copying files stay: the libraries' licences require them.
+	find "$dir/vendor" -type f \( -iname '*.md' -o -iname '.gitattributes' -o -iname '.editorconfig' -o -iname '.gitignore' \) \
+		! -iname 'LICENSE*' ! -iname 'COPYING*' -delete
+	find "$dir/vendor" -mindepth 2 -type d -name '.*' -prune -exec rm -rf {} +
 }
 
 # Set packages to compile
@@ -329,13 +396,14 @@ if [ -n "$BUILD_PKG_REV" ] && ! [[ "$BUILD_PKG_REV" =~ ^[0-9]+$ ]]; then
 	exit 1
 fi
 
-# Clear previous screen output
-clear
-
 # Set command variables
-if [ -z $branch ]; then
+if [ -z "$branch" ]; then
+	if [ ! -t 0 ]; then
+		echo >&2 "[!] No branch given and no terminal to ask on. Pass '~localsrc' (or a branch name)."
+		exit 1
+	fi
 	echo -n "Please enter the name of the branch to build from (e.g. main): "
-	read branch
+	read -r branch
 fi
 
 if [ $(echo "$branch" | grep '^~localsrc') ]; then
@@ -345,9 +413,23 @@ else
 	use_src_folder='false'
 fi
 
-if [ -z $install ]; then
-	echo -n 'Would you like to install the compiled packages? [y/N] '
-	read install
+if [ -z "$install" ]; then
+	if [ -t 0 ]; then
+		echo -n 'Would you like to install the compiled packages? [y/N] '
+		read -r install
+	else
+		# Unattended run: never install unless --install / Y was given
+		install='false'
+	fi
+fi
+
+# The panel package must come from the local checkout. A remote build would fetch
+# the panel of another project, which is exactly what this fork must never ship.
+if [ "$HESTIA_B" = 'true' ] && [ "$use_src_folder" != 'true' ] && [ -z "$HESTIA_SRC_REPO" ]; then
+	echo >&2 "[!] The --hestia target is built from the local checkout only."
+	echo >&2 "    Use '~localsrc' as branch name, or set HESTIA_SRC_REPO=<owner/repo> to build from"
+	echo >&2 "    a repository you control."
+	exit 1
 fi
 
 # Set Version for compiling
@@ -357,10 +439,10 @@ if [ -f "$SRC_DIR/src/deb/hestia/control" ] && [ "$use_src_folder" == 'true' ]; 
 	PHP_V=$(cat $SRC_DIR/src/deb/php/control | grep "Version:" | cut -d' ' -f2)
 	WEB_TERMINAL_V=$(cat $SRC_DIR/src/deb/web-terminal/control | grep "Version:" | cut -d' ' -f2)
 else
-	BUILD_VER=$(download_file https://raw.githubusercontent.com/$REPO/$branch/src/deb/hestia/control | grep "Version:" | cut -d' ' -f2)
-	NGINX_V=$(download_file https://raw.githubusercontent.com/$REPO/$branch/src/deb/nginx/control | grep "Version:" | cut -d' ' -f2)
-	PHP_V=$(download_file https://raw.githubusercontent.com/$REPO/$branch/src/deb/php/control | grep "Version:" | cut -d' ' -f2)
-	WEB_TERMINAL_V=$(download_file https://raw.githubusercontent.com/$REPO/$branch/src/deb/web-terminal/control | grep "Version:" | cut -d' ' -f2)
+	BUILD_VER=$(download_file $RAW_BASE/$REPO/$branch/src/deb/hestia/control | grep "Version:" | cut -d' ' -f2)
+	NGINX_V=$(download_file $RAW_BASE/$REPO/$branch/src/deb/nginx/control | grep "Version:" | cut -d' ' -f2)
+	PHP_V=$(download_file $RAW_BASE/$REPO/$branch/src/deb/php/control | grep "Version:" | cut -d' ' -f2)
+	WEB_TERMINAL_V=$(download_file $RAW_BASE/$REPO/$branch/src/deb/web-terminal/control | grep "Version:" | cut -d' ' -f2)
 fi
 
 if [ -z "$BUILD_VER" ]; then
@@ -399,7 +481,6 @@ if [ "$KEEPBUILD" != 'true' ]; then
 fi
 mkdir -p $BUILD_DIR
 mkdir -p $DEB_DIR
-mkdir -p $ARCHIVE_DIR
 
 # Define a timestamp function
 timestamp() {
@@ -409,7 +490,16 @@ timestamp() {
 if [ "$dontinstalldeps" != 'true' ]; then
 	# Install needed software
 	# Set package dependencies for compiling
-	SOFTWARE='wget tar git curl ca-certificates build-essential libxml2-dev libz-dev libzip-dev libgmp-dev libcurl4-openssl-dev unzip openssl libssl-dev pkg-config libsqlite3-dev libonig-dev lsb-release'
+	# The panel package (--hestia) only needs the basics, Node.js (below) and Composer.
+	SOFTWARE='wget tar git curl ca-certificates unzip openssl lsb-release'
+	if [ "$NGINX_B" = 'true' ] || [ "$PHP_B" = 'true' ] || [ "$WEB_TERMINAL_B" = 'true' ]; then
+		# Stage 2 packages are compiled from source and need the full toolchain
+		SOFTWARE="$SOFTWARE build-essential libxml2-dev libz-dev libzip-dev libgmp-dev libcurl4-openssl-dev libssl-dev pkg-config libsqlite3-dev libonig-dev"
+	fi
+	if [ "$HESTIA_B" = 'true' ] && [ -z "$(which composer)" ]; then
+		# The panel package bundles web/inc/vendor (see below), so the build host needs Composer
+		SOFTWARE="$SOFTWARE composer"
+	fi
 	echo "Updating system APT repositories..."
 	apt-get -qq update
 	echo "Installing dependencies for compilation..."
@@ -426,22 +516,25 @@ if [ "$dontinstalldeps" != 'true' ]; then
 	apt="/etc/apt/sources.list.d"
 	codename="$(lsb_release -s -c)"
 
-	if [ -z $(which "node") ]; then
-		curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
-	fi
+	# Node.js and npm that are already installed (any source) are used as they are
+	if [ -z "$(which "node")" ] || [ -z "$(which "npm")" ]; then
+		if [ -z "$(which "node")" ]; then
+			curl -fsSL https://deb.nodesource.com/setup_24.x | bash -
+		fi
 
-	echo "Installing Node.js..."
-	apt-get -qq update > /dev/null
-	apt-get -qq install -y nodejs
+		echo "Installing Node.js..."
+		apt-get -qq update > /dev/null
+		apt-get -qq install -y nodejs
 
-	# NodeSource's nodejs package bundles npm, but Debian/Ubuntu's own nodejs
-	# package doesn't (used if the NodeSource repo above failed to register,
-	# e.g. no network). Only fall back to the distro's separate npm package
-	# when npm is actually missing — requesting it unconditionally alongside
-	# nodejs in one apt-get call conflicts with NodeSource's bundled npm and
-	# fails the whole install.
-	if [ -z "$(which "npm")" ]; then
-		apt-get -qq install -y npm
+		# NodeSource's nodejs package bundles npm, but Debian/Ubuntu's own nodejs
+		# package doesn't (used if the NodeSource repo above failed to register,
+		# e.g. no network). Only fall back to the distro's separate npm package
+		# when npm is actually missing — requesting it unconditionally alongside
+		# nodejs in one apt-get call conflicts with NodeSource's bundled npm and
+		# fails the whole install.
+		if [ -z "$(which "npm")" ]; then
+			apt-get -qq install -y npm
+		fi
 	fi
 
 	if [ -z "$(which "node")" ] || [ -z "$(which "npm")" ]; then
@@ -449,7 +542,7 @@ if [ "$dontinstalldeps" != 'true' ]; then
 		exit 1
 	fi
 
-	nodejs_version=$(/usr/bin/node -v | cut -f1 -d'.' | sed 's/v//g')
+	nodejs_version=$(node -v | cut -f1 -d'.' | sed 's/v//g')
 
 	if [ "$nodejs_version" -lt 18 ]; then
 		echo "Requires Node.js 18.x or higher"
@@ -457,7 +550,7 @@ if [ "$dontinstalldeps" != 'true' ]; then
 	fi
 
 	# Fix for Debian PHP environment
-	if [ $BUILD_ARCH == "amd64" ]; then
+	if [ "$BUILD_ARCH" == "amd64" ] && { [ "$NGINX_B" = 'true' ] || [ "$PHP_B" = 'true' ] || [ "$WEB_TERMINAL_B" = 'true' ]; }; then
 		if [ ! -L /usr/local/include/curl ]; then
 			ln -s /usr/include/x86_64-linux-gnu/curl /usr/local/include/curl
 		fi
@@ -485,21 +578,21 @@ if [ "$HESTIA_DEBUG" ]; then
 fi
 
 # Generate Links for sourcecode
-HESTIA_ARCHIVE_LINK='https://github.com/hestiacp/hestiacp/archive/'$branch'.tar.gz'
+HESTIA_ARCHIVE_LINK="$ARCHIVE_BASE/$REPO/archive/$branch.tar.gz"
 if [[ $NGINX_V =~ - ]]; then
-	NGINX='https://nginx.org/download/nginx-'$(echo $NGINX_V | cut -d"-" -f1)'.tar.gz'
+	NGINX="$NGINX_DIST_BASE/nginx-$(echo "$NGINX_V" | cut -d"-" -f1).tar.gz"
 else
-	NGINX='https://nginx.org/download/nginx-'$(echo $NGINX_V | cut -d"~" -f1)'.tar.gz'
+	NGINX="$NGINX_DIST_BASE/nginx-$(echo "$NGINX_V" | cut -d"~" -f1).tar.gz"
 fi
 
-OPENSSL='https://github.com/openssl/openssl/releases/download/openssl-'$OPENSSL_V'/openssl-'$OPENSSL_V'.tar.gz'
-PCRE='https://github.com/PCRE2Project/pcre2/releases/download/pcre2-'$PCRE_V'/pcre2-'$PCRE_V'.tar.gz'
-ZLIB='https://github.com/madler/zlib/archive/refs/tags/v'$ZLIB_V'.tar.gz'
+OPENSSL="$OPENSSL_DIST_BASE/openssl-$OPENSSL_V/openssl-$OPENSSL_V.tar.gz"
+PCRE="$PCRE_DIST_BASE/pcre2-$PCRE_V/pcre2-$PCRE_V.tar.gz"
+ZLIB="$ZLIB_DIST_BASE/v$ZLIB_V.tar.gz"
 
 if [[ $PHP_V =~ - ]]; then
-	PHP='http://de2.php.net/distributions/php-'$(echo $PHP_V | cut -d"-" -f1)'.tar.gz'
+	PHP="$PHP_DIST_BASE/php-$(echo "$PHP_V" | cut -d"-" -f1).tar.gz"
 else
-	PHP='http://de2.php.net/distributions/php-'$(echo $PHP_V | cut -d"~" -f1)'.tar.gz'
+	PHP="$PHP_DIST_BASE/php-$(echo "$PHP_V" | cut -d"~" -f1).tar.gz"
 fi
 
 # Forward slashes in branchname are replaced with dashes to match foldername in github archive.
@@ -861,8 +954,28 @@ if [ "$HESTIA_B" = true ]; then
 	rm -rf $BUILD_DIR/hestiacp-$branch_dash
 	# Download and unpack source files
 	if [ "$use_src_folder" == 'true' ]; then
-		[ "$HESTIA_DEBUG" ] && echo DEBUG: cp -rf "$SRC_DIR/" $BUILD_DIR/hestiacp-$branch_dash
-		cp -rf "$SRC_DIR/" $BUILD_DIR/hestiacp-$branch_dash
+		case "$(cd "$BUILD_DIR" && pwd)/" in
+			"$SRC_DIR"/*)
+				echo >&2 "[!] BUILD_DIR ($BUILD_DIR) must not be inside the source folder ($SRC_DIR)."
+				exit 1
+				;;
+		esac
+		# Copy the checkout without git history, node_modules, tests, docs, the download
+		# cache and generated/untracked folders. Assets and vendor code are rebuilt below,
+		# so nothing stale from the working tree can end up in the package.
+		[ "$HESTIA_DEBUG" ] && echo DEBUG: copy "$SRC_DIR/" to $BUILD_DIR/hestiacp-$branch_dash
+		mkdir -p $BUILD_DIR/hestiacp-$branch_dash
+		tar -C "$SRC_DIR" \
+			--exclude=./.git \
+			--exclude=./node_modules \
+			--exclude=./src/archive \
+			--exclude=./test \
+			--exclude=./docs \
+			--exclude=./web/css/themes \
+			--exclude=./web/js/dist \
+			--exclude=./web/inc/vendor \
+			--exclude=./web/src/vendor \
+			-cf - . | tar -C $BUILD_DIR/hestiacp-$branch_dash -xf -
 	elif [ -d $SRC_DIR ]; then
 		download_file $HESTIA_ARCHIVE_LINK '-' 'fresh' | tar xz
 	fi
@@ -871,15 +984,23 @@ if [ "$HESTIA_B" = true ]; then
 
 	# Build web and move needed directories
 	cd $BUILD_DIR/hestiacp-$branch_dash
-	npm ci --ignore-scripts
-	npm run build
+	npm ci --ignore-scripts || exit 1
+	npm run build || exit 1
+	# Bundle the PHP vendor code (not tracked in git)
+	bundle_php_vendor "$PWD/web/inc" || exit 1
+	bundle_php_vendor "$PWD/web/src" || exit 1
 	for BUILD_ARCH in $arch; do
 		for os in $supported_os; do
 			mkdir -p $BUILD_DIR_HESTIA/usr/local/hestia
+			# A kept build folder must not leak files of a previous build into this package
+			rm -rf $BUILD_DIR_HESTIA/usr/local/hestia/bin $BUILD_DIR_HESTIA/usr/local/hestia/func \
+				$BUILD_DIR_HESTIA/usr/local/hestia/install $BUILD_DIR_HESTIA/usr/local/hestia/web \
+				$BUILD_DIR_HESTIA/DEBIAN
 			cp -rf bin func install web $BUILD_DIR_HESTIA/usr/local/hestia/
 
-			# Set permissions
-			find $BUILD_DIR_HESTIA/usr/local/hestia/ -type f -exec chmod -x {} \;
+			# Set permissions: directories 755, files 644, then the executables below
+			find $BUILD_DIR_HESTIA/usr/local/hestia/ -type d -exec chmod 755 {} \;
+			find $BUILD_DIR_HESTIA/usr/local/hestia/ -type f -exec chmod 644 {} \;
 
 			# Allow send email via /usr/local/hestia/web/inc/mail-wrapper.php via cli
 			chmod +x $BUILD_DIR_HESTIA/usr/local/hestia/web/inc/mail-wrapper.php
@@ -901,7 +1022,7 @@ if [ "$HESTIA_B" = true ]; then
 			chmod +x $BUILD_DIR_HESTIA/DEBIAN/postinst
 			chmod +x $BUILD_DIR_HESTIA/DEBIAN/preinst
 
-			echo Building Hestia DEB
+			echo Building VylarisSpace DEB
 			build_deb $BUILD_DIR_HESTIA
 
 			# clear up the source folder
@@ -912,6 +1033,12 @@ if [ "$HESTIA_B" = true ]; then
 			cd $BUILD_DIR/hestiacp-$branch_dash
 		done
 	done
+
+	# Checksums of everything in the output folder (publish them next to the packages)
+	if [ "$SKIP_DEB_PACK" != 'true' ]; then
+		(cd "$DEB_DIR" && sha256sum -- *.deb > SHA256SUMS)
+		echo "Checksums written to $DEB_DIR/SHA256SUMS"
+	fi
 fi
 
 #################################################################################

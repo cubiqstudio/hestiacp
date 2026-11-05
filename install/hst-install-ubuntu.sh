@@ -12,22 +12,63 @@
 
 # ======================================================== #
 #
-# IMPORTANT: PACKAGE SOURCE - NOT FOR PRODUCTION YET
+# PACKAGE SOURCE (hybrid mode)
 #
-# This installer still installs the hestia, hestia-nginx, hestia-php
-# and hestia-web-terminal packages from the UPSTREAM HestiaCP apt
-# repository (RHOST below). Those upstream packages replace the
-# VylarisSpace interface with the upstream one and are not under
-# the control of VylarisGroupEurope.
+# The 'hestia' package (the panel, VylarisSpace interface) is installed
+# from the own VylarisSpace package repository only. The repository
+# is chosen by the owner, there is no default host:
 #
-# Do NOT use this installer on production servers until the own
-# VylarisSpace package repository exists (see VYLARIS-PACKAGING.md),
-# unless --with-debs points to VylarisSpace packages.
+#   --vylaris-repo <url>          or env VYLARIS_REPO_URL (https://, exact host)
+#   --vylaris-key <url|file>      or env VYLARIS_REPO_KEY
+#                                 (default: <repository>/pubkey.gpg)
+#   --vylaris-key-fingerprint <f> or env VYLARIS_REPO_KEY_FPR: fingerprint of the
+#                                 primary key (40 hex digits). REQUIRED for a key
+#                                 that is downloaded; optional for a local file.
+#                                 Get it from the owner: gpg --show-keys --with-fingerprint pubkey.asc
+#   --vylaris-repo-auth <u:pass>  or env VYLARIS_REPO_AUTH (private repository;
+#                                 prefer the environment, a command line value
+#                                 is visible in the process list)
+#   --allow-insecure-http         or env VYLARIS_ALLOW_INSECURE_HTTP=yes: accept an
+#                                 http:// repository (tests on trusted networks only)
+#   --with-debs <dir>             hestia_*.deb built from this source
+#   --allow-upstream-hestia       developers only: UPSTREAM hestia package
 #
-# Apt source setup, RHOST, package installation and the install
-# version check are intentionally unchanged here (Phase 4).
+# Without one of these the installer stops before it changes anything.
+# hestia-nginx, hestia-php and hestia-web-terminal still come from the
+# upstream HestiaCP apt repository (RHOST below, signed by upstream); building
+# them is stage 2 of VYLARIS-PACKAGING.md. An apt pin (written to
+# /etc/apt/preferences.d/vylarisspace) makes sure that package 'hestia'
+# can never be installed from the upstream repository.
+#
+# install/deb/deb_signing.key is the public key of the UPSTREAM project.
+# This installer does not use it for the own repository (the own key is
+# created with src/vylaris/make-signing-key.sh and installed to
+# /usr/share/keyrings/vylarisspace-keyring.gpg). The upstream repository
+# key is fetched from RHOST and only trusts the upstream packages.
 #
 # ======================================================== #
+
+# Repository credentials must never reach a trace: when the shell traces (bash -x, set -x) and
+# credentials may be present (environment or option -A / --vylaris-repo-auth), tracing is
+# switched off for the whole run.
+case $- in
+	*x*)
+		set +x
+		vyl_trace='on'
+		[ -z "${VYLARIS_REPO_AUTH:-}" ] || vyl_trace='off'
+		for vyl_a in "$@"; do
+			case "$vyl_a" in
+				--vylaris-repo-auth | --vylaris-repo-auth=* | -*A*) vyl_trace='off' ;;
+			esac
+		done
+		if [ "$vyl_trace" = 'on' ]; then
+			set -x
+		else
+			echo "Note: tracing (set -x) is switched off, repository credentials are in use." >&2
+		fi
+		unset vyl_a vyl_trace
+		;;
+esac
 
 #----------------------------------------------------------#
 #                  Variables&Functions                     #
@@ -39,10 +80,43 @@ PRODUCT_NAME='VylarisSpace'
 COMPANY_NAME='VylarisGroupEurope'
 # Upstream update channels (apt.hestiacp.com, GitHub) must not run on a
 # VylarisSpace server: they would replace this fork with upstream HestiaCP.
-# Written to hestia.conf as UPSTREAM_UPDATES. Only switch to 'yes' once RHOST
-# points to the own VylarisSpace package repository (see VYLARIS-PACKAGING.md).
+# Written to hestia.conf as UPSTREAM_UPDATES, stays 'no'.
 upstream_updates='no'
+# Updates from the own VylarisSpace repository, written to hestia.conf as
+# VYLARIS_UPDATES. 'yes' when a repository was configured (see below).
+vylaris_updates='no'
+# Upstream apt repository: still used for hestia-nginx, hestia-php and
+# hestia-web-terminal (hybrid mode). Package 'hestia' is pinned away from it.
 RHOST='apt.hestiacp.com'
+# Own package repository, owner configured (no default host)
+vylaris_repo_url="${VYLARIS_REPO_URL:-}"
+vylaris_repo_key="${VYLARIS_REPO_KEY:-}"
+vylaris_repo_key_fpr="${VYLARIS_REPO_KEY_FPR:-}"
+vylaris_repo_auth="${VYLARIS_REPO_AUTH:-}"
+# The credentials are read once; they must not stay in the environment that apt, dpkg maintainer
+# scripts and downloaded installers (rclone) inherit.
+unset VYLARIS_REPO_AUTH
+vylaris_repo_suite="${VYLARIS_REPO_SUITE:-}"
+vylaris_allow_http="${VYLARIS_ALLOW_INSECURE_HTTP:-no}"
+vyl_auth_from_flag='no'
+vyl_upstream_host=''
+vyl_scheme=''
+vyl_host=''
+vyl_port=''
+vyl_path=''
+vyl_machine=''
+vyl_key_kind=''
+vyl_key_fpr=''
+vyl_key_loaded='no'
+vyl_tmp=''
+allow_upstream_hestia='no'
+vyl_keyring='/usr/share/keyrings/vylarisspace-keyring.gpg'
+vyl_sources_list='/etc/apt/sources.list.d/vylarisspace.list'
+vyl_pref_file='/etc/apt/preferences.d/vylarisspace'
+vyl_auth_file='/etc/apt/auth.conf.d/vylarisspace.conf'
+vyl_auth_user=''
+vyl_auth_pass=''
+vyl_candidate=''
 VERSION='ubuntu'
 HESTIA='/usr/local/hestia'
 LOG="/root/hst_install_backups/hst_install-$(date +%d%m%Y%H%M).log"
@@ -140,10 +214,22 @@ help() {
   -u, --username          Set admin user
   -p, --password          Set admin password
   -D, --with-debs         Path to VylarisSpace debs
+  -R, --vylaris-repo      VylarisSpace package repository URL  (env VYLARIS_REPO_URL)
+  -K, --vylaris-key       Repository key, URL or file          (env VYLARIS_REPO_KEY)
+  -F, --vylaris-key-fingerprint
+                          Fingerprint of the primary key, required for a
+                          downloaded key                        (env VYLARIS_REPO_KEY_FPR)
+  -A, --vylaris-repo-auth Repository login user:password       (env VYLARIS_REPO_AUTH)
+  -I, --allow-insecure-http
+                          Accept an http:// repository, tests only (env VYLARIS_ALLOW_INSECURE_HTTP=yes)
+  -U, --allow-upstream-hestia
+                          Developers only: install the UPSTREAM hestia package
   -f, --force             Force installation
   -h, --help              Print this help
 
-  Example: bash $0 -e admin@example.com -p p4ssw0rd --multiphp yes"
+  A package source is required: --vylaris-repo, --with-debs or (developers) --allow-upstream-hestia.
+
+  Example: bash $0 --vylaris-repo https://<host>/<path> --vylaris-key-fingerprint <40 hex digits> -e admin@example.com -p p4ssw0rd --multiphp yes"
 	exit 1
 }
 
@@ -227,12 +313,542 @@ print_centered() {
 	printf "%*s\n" $(((72 + ${#1}) / 2)) "$1"
 }
 
-# Warn when packages still come from the upstream HestiaCP repository (Phase 4)
+# Warn when the hestia package is taken from the upstream HestiaCP repository
+# (only possible with --allow-upstream-hestia)
 print_upstream_repo_warning() {
-	if [ "$RHOST" = 'apt.hestiacp.com' ]; then
-		echo -e "\e[91mWARNING: packages are fetched from the upstream HestiaCP repository; the VylarisSpace interface is replaced by the upstream one unless --with-debs points to VylarisSpace packages\e[0m"
+	if [ "$allow_upstream_hestia" = 'yes' ]; then
+		echo -e "\e[91mWARNING: --allow-upstream-hestia: the hestia package is fetched from the upstream HestiaCP repository ($RHOST); the VylarisSpace interface is replaced by the upstream one and there is no protection against upstream updates. Developers only.\e[0m"
 	fi
 }
+
+# ---- BEGIN VylarisSpace package repository ---------------------------------------------------
+# Own apt repository for the 'hestia' package (hybrid mode). hestia-nginx, hestia-php and
+# hestia-web-terminal still come from the upstream repository ($RHOST), see VYLARIS-PACKAGING.md.
+# Same steps as src/vylaris/client-setup.sh (this installer is standalone and does not call it);
+# the part between the "shared" markers is identical in both files.
+# There is no default host: the owner configures VYLARIS_REPO_URL (or --vylaris-repo).
+
+# Print an error in red and stop
+vylaris_refuse() {
+	echo -e "\e[91mInstallation aborted\e[0m" >&2
+	echo "====================================================================" >&2
+	echo -e "\e[33m$1\e[0m" >&2
+	echo >&2
+	exit 1
+}
+
+# Hook used by the shared part
+vyl_fail() {
+	vylaris_refuse "$1"
+}
+
+# ---- shared with src/vylaris/client-setup.sh: keep both copies identical (checked by a diff) ----
+# Needs a function vyl_fail "message" that stops the run, and the variables vylaris_repo_url,
+# vylaris_repo_key, vylaris_repo_key_fpr, vylaris_repo_auth, vylaris_allow_http, vyl_upstream_host.
+# Sets vyl_scheme, vyl_host, vyl_port, vyl_path, vyl_machine, vyl_auth_user, vyl_auth_pass,
+# vyl_key_kind (net|local) and (after vyl_load_key) vyl_key_fpr.
+
+# Strict parser for repository URLs, no eval. On success prints scheme|host|port|path|url with the
+# host in lower case without a trailing dot, the effective port (empty for file://), the path without
+# trailing slashes and url as the normalized form. On failure prints the reason and returns 1.
+# Accepted: https:// (http:// only with an explicit opt-in, file:// for tests) with a DNS name or an
+# IPv4 address, an optional :port and an optional /path. Refused: user info (user@host), IPv6
+# literals, query, fragment, percent escapes, empty, . and .. path segments, every other scheme.
+vyl_parse_url() {
+	local url="$1" scheme rest hostport host port path host_re
+	host_re='^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?(\.[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?)*$'
+	case "$url" in
+		*://*) ;;
+		*)
+			echo "it is not a URL, expected https://<host>/<path>"
+			return 1
+			;;
+	esac
+	scheme="$(printf '%s' "${url%%://*}" | tr '[:upper:]' '[:lower:]')"
+	rest="${url#*://}"
+	case "$scheme" in
+		https | http | file) ;;
+		*)
+			echo "the scheme is not supported, use https:// (http:// needs an explicit opt-in, file:// is for tests)"
+			return 1
+			;;
+	esac
+	if ! [[ "$rest" =~ ^[A-Za-z0-9._:/~+-]*$ ]]; then
+		echo "it contains characters that are not allowed (user name or password, IPv6 address, query, fragment, space, %, ...)"
+		return 1
+	fi
+	host=''
+	port=''
+	if [ "$scheme" = 'file' ]; then
+		case "$rest" in
+			/*) ;;
+			*)
+				echo "a file:// URL needs an absolute path (file:///path)"
+				return 1
+				;;
+		esac
+		path="$rest"
+	else
+		hostport="${rest%%/*}"
+		path=''
+		case "$rest" in
+			*/*) path="/${rest#*/}" ;;
+		esac
+		host="${hostport%%:*}"
+		if [[ "$hostport" == *:* ]]; then
+			port="${hostport#*:}"
+			if ! [[ "$port" =~ ^[0-9]{1,5}$ ]] || [ "$((10#$port))" -lt 1 ] || [ "$((10#$port))" -gt 65535 ]; then
+				echo "the port is not valid"
+				return 1
+			fi
+			port=$((10#$port))
+		fi
+		host="$(printf '%s' "$host" | tr '[:upper:]' '[:lower:]')"
+		host="${host%.}"
+		if [ "${#host}" -gt 253 ] || ! [[ "$host" =~ $host_re ]]; then
+			echo "the host name is not valid"
+			return 1
+		fi
+		if [ -z "$port" ]; then
+			if [ "$scheme" = 'https' ]; then
+				port=443
+			else
+				port=80
+			fi
+		fi
+	fi
+	while [ "${path%/}" != "$path" ]; do
+		path="${path%/}"
+	done
+	case "$path/" in
+		*//* | */./* | */../*)
+			echo "the path must not contain empty, . or .. segments"
+			return 1
+			;;
+	esac
+	if [ "$scheme" = 'file' ]; then
+		if [ -z "$path" ]; then
+			echo "a file:// URL needs a directory"
+			return 1
+		fi
+		url="file://$path"
+	else
+		url="$scheme://$host"
+		if { [ "$scheme" = 'https' ] && [ "$port" != 443 ]; } || { [ "$scheme" = 'http' ] && [ "$port" != 80 ]; }; then
+			url="$url:$port"
+		fi
+		url="$url$path"
+	fi
+	printf '%s|%s|%s|%s|%s\n' "$scheme" "$host" "$port" "$path" "$url"
+}
+
+# Success only when the URL is https:// and has exactly the host and port of the repository
+# (a prefix match is not enough: https://repo.example.evil.test is another host).
+vyl_same_https_endpoint() {
+	local parsed s h p
+	parsed="$(vyl_parse_url "$1")" || return 1
+	IFS='|' read -r s h p _ _ <<< "$parsed"
+	[ "$s" = 'https' ] && [ "$vyl_scheme" = 'https' ] && [ "$h" = "$vyl_host" ] && [ "$p" = "$vyl_port" ]
+}
+
+# Download a URL. The credentials go (through a curl config on stdin, not visible in ps) only to the
+# exact host and port of the repository over https. A redirect may not leave https.
+vyl_curl() {
+	local parsed url out="$2" proto='=https'
+	parsed="$(vyl_parse_url "$1")" || return 1
+	url="${parsed##*|}"
+	if [ "${vylaris_allow_http:-no}" = 'yes' ]; then
+		proto='=https,http'
+	fi
+	if [ -n "${vyl_auth_user:-}" ] && vyl_same_https_endpoint "$url"; then
+		printf 'user = "%s:%s"\n' "$vyl_auth_user" "$vyl_auth_pass" \
+			| curl -fsSL --proto "$proto" --proto-redir "$proto" --max-time 60 --config - -o "$out" "$url"
+	else
+		curl -fsSL --proto "$proto" --proto-redir "$proto" --max-time 60 -o "$out" "$url"
+	fi
+}
+
+# All checks of the repository options that need no network and no tool except bash.
+# Normalizes the variables, reads the credentials once and removes them from the environment.
+vyl_validate_options() {
+	local parsed reason key_lc kscheme
+	if ! parsed="$(vyl_parse_url "$vylaris_repo_url")"; then
+		reason="$parsed"
+		vyl_fail "Invalid repository URL: $(printf '%s' "$vylaris_repo_url" | sed 's#://[^/@]*@#://***@#')
+Reason: $reason.
+Expected https://<host>[:port]/<path>"
+	fi
+	IFS='|' read -r vyl_scheme vyl_host vyl_port vyl_path vylaris_repo_url <<< "$parsed"
+	if [ "$vyl_scheme" = 'http' ]; then
+		if [ "${vylaris_allow_http:-no}" != 'yes' ]; then
+			vyl_fail "Refusing the plain http:// repository $vylaris_repo_url
+Nothing protects the connection: anybody on the way could change what is downloaded or read the login.
+Use an https:// URL. Only for a test on a network you trust, you can accept the risk with
+--allow-insecure-http (or VYLARIS_ALLOW_INSECURE_HTTP=yes). The packages stay signed, but nothing
+else is protected and credentials are never sent over http."
+		fi
+		echo "WARNING: the repository is used over plain http:// (--allow-insecure-http). For tests on trusted networks only." >&2
+	fi
+	if [ -n "$vyl_host" ] && [ "$vyl_host" = "$vyl_upstream_host" ]; then
+		vyl_fail "The repository host $vyl_host is the upstream HestiaCP host, which is pinned away for package hestia. Use the host of the VylarisSpace repository."
+	fi
+	vyl_machine="$vyl_host"
+	if { [ "$vyl_scheme" = 'https' ] && [ "$vyl_port" != 443 ]; } || { [ "$vyl_scheme" = 'http' ] && [ "$vyl_port" != 80 ]; }; then
+		vyl_machine="$vyl_host:$vyl_port"
+	fi
+	vyl_machine="$vyl_machine$vyl_path"
+
+	# Key source: a URL (network) or a local file
+	if [ -z "$vylaris_repo_key" ]; then
+		vylaris_repo_key="$vylaris_repo_url/pubkey.gpg"
+	fi
+	key_lc="$(printf '%s' "$vylaris_repo_key" | tr '[:upper:]' '[:lower:]')"
+	case "$key_lc" in
+		http://* | https://*)
+			if ! parsed="$(vyl_parse_url "$vylaris_repo_key")"; then
+				reason="$parsed"
+				vyl_fail "Invalid repository key URL: $vylaris_repo_key
+Reason: $reason."
+			fi
+			IFS='|' read -r kscheme _ _ _ vylaris_repo_key <<< "$parsed"
+			if [ "$kscheme" = 'http' ] && [ "${vylaris_allow_http:-no}" != 'yes' ]; then
+				vyl_fail "Refusing to download the repository key over plain http://: $vylaris_repo_key
+Use an https:// URL, or --allow-insecure-http (tests on trusted networks only)."
+			fi
+			vyl_key_kind='net'
+			;;
+		file://*)
+			vylaris_repo_key="${vylaris_repo_key:7}"
+			vyl_key_kind='local'
+			;;
+		*)
+			vyl_key_kind='local'
+			;;
+	esac
+	if [ "$vyl_key_kind" = 'local' ] && { [ ! -f "$vylaris_repo_key" ] || [ ! -r "$vylaris_repo_key" ]; }; then
+		vyl_fail "Cannot read the repository key file: $vylaris_repo_key"
+	fi
+
+	# Fingerprint of the PRIMARY key (the first fpr record after pub in gpg --with-colons)
+	if [ -n "$vylaris_repo_key_fpr" ]; then
+		vylaris_repo_key_fpr="$(printf '%s' "$vylaris_repo_key_fpr" | tr -d ' ' | tr '[:lower:]' '[:upper:]')"
+		if ! [[ "$vylaris_repo_key_fpr" =~ ^[0-9A-F]{40}$ ]]; then
+			vyl_fail "The key fingerprint must be 40 hexadecimal digits (spaces are ignored, upper or lower case)."
+		fi
+	fi
+	if [ "$vyl_key_kind" = 'net' ] && [ -z "$vylaris_repo_key_fpr" ]; then
+		vyl_fail "The repository key would be downloaded from $vylaris_repo_key
+A key that comes over the network proves nothing about who owns it, so its fingerprint is required.
+Get it on the owner's machine from the public key (not from the server):
+  gpg --show-keys --with-fingerprint pubkey.asc
+and pass the 40 digit fingerprint of the primary key with --vylaris-key-fingerprint (client-setup.sh:
+--key-fingerprint) or VYLARIS_REPO_KEY_FPR. Alternatively give the key as a local file
+(--vylaris-key <file>, client-setup.sh: --key <file>) that you received from the owner on a trusted channel."
+	fi
+
+	# Credentials: read once, then removed from the environment and from the option variable
+	vyl_auth_user=''
+	vyl_auth_pass=''
+	if [ -n "$vylaris_repo_auth" ]; then
+		if [[ "$vylaris_repo_auth" != *:* ]]; then
+			vyl_fail "Credentials must have the form user:password."
+		fi
+		vyl_auth_user="${vylaris_repo_auth%%:*}"
+		vyl_auth_pass="${vylaris_repo_auth#*:}"
+		if [ -z "$vyl_auth_user" ] || [ -z "$vyl_auth_pass" ] || [[ "$vyl_auth_user$vyl_auth_pass" =~ [[:space:]\"\'\\] ]]; then
+			vyl_fail "User and password must not be empty or contain spaces, quotes or backslashes (use a generated token)."
+		fi
+		if [ "$vyl_scheme" = 'http' ]; then
+			vyl_fail "Refusing to send credentials over plain http. Use an https:// repository URL."
+		fi
+	fi
+	vylaris_repo_auth=''
+	unset VYLARIS_REPO_AUTH
+}
+
+# Fetch (network) or copy (local file) the key and check it. Leaves $1/key.gpg, a binary keyring with
+# exactly one public key, and sets vyl_key_fpr (fingerprint of the primary key). Refuses on any doubt:
+# no key, secret key material, more than one primary key (everything in the file would be trusted by
+# apt), or a fingerprint that differs from the one given.
+vyl_load_key() {
+	local dir="$1" colons n
+	if [ "$vyl_key_kind" = 'net' ]; then
+		vyl_curl "$vylaris_repo_key" "$dir/key.raw" || vyl_fail "Cannot download the repository key from $vylaris_repo_key"
+	else
+		cp -- "$vylaris_repo_key" "$dir/key.raw" || vyl_fail "Cannot read the repository key file $vylaris_repo_key"
+	fi
+	[ -s "$dir/key.raw" ] || vyl_fail "The repository key file is empty."
+	if grep -q 'BEGIN PGP PUBLIC KEY BLOCK' "$dir/key.raw"; then
+		gpg --batch --dearmor < "$dir/key.raw" > "$dir/key.gpg" 2> /dev/null || vyl_fail "The repository key is not valid armor."
+	else
+		cp -- "$dir/key.raw" "$dir/key.gpg"
+	fi
+	colons="$(gpg --batch --show-keys --with-colons "$dir/key.gpg" 2> /dev/null || true)"
+	if printf '%s\n' "$colons" | grep -q '^\(sec\|ssb\):'; then
+		vyl_fail "The key file contains SECRET key material. Refusing."
+	fi
+	n="$(printf '%s\n' "$colons" | grep -c '^pub:' || true)"
+	if [ "$n" -lt 1 ]; then
+		vyl_fail "The repository key file contains no public key."
+	fi
+	if [ "$n" -gt 1 ]; then
+		vyl_fail "The repository key file contains $n primary keys, exactly one is expected (apt would trust all of them)."
+	fi
+	# Validity field of the primary key: e = expired, r = revoked, d = disabled, i = invalid, n = not valid
+	case "$(printf '%s\n' "$colons" | awk -F: '$1=="pub"{print $2;exit}')" in
+		e | r | d | i | n) vyl_fail "The repository key is expired, revoked or not valid. Ask the repository owner for a current key." ;;
+	esac
+	vyl_key_fpr="$(printf '%s\n' "$colons" | awk -F: '$1=="pub"{p=1;next} p==1&&$1=="fpr"{print $10;exit}')"
+	[ -n "$vyl_key_fpr" ] || vyl_fail "The repository key file contains no public key."
+	if [ -n "$vylaris_repo_key_fpr" ] && [ "$vyl_key_fpr" != "$vylaris_repo_key_fpr" ]; then
+		vyl_fail "Key fingerprint mismatch: expected $vylaris_repo_key_fpr, the key contains $vyl_key_fpr"
+	fi
+}
+
+# Print the apt preferences for package hestia. Arguments: the upstream host, and (when a repository
+# is configured) the scheme and host of the own repository.
+# apt uses the FIRST stanza that matches a package version, so the order is what matters:
+#   1. the upstream repository, by host and by the Origin it claims  -> -1 (never)
+#   2. the own repository, by host                                   -> 1001
+#   3. every other remote source                                     -> -1 (never)
+# The own stanza is bound to the host, not to the Origin field of the Release file: a repository
+# that only CLAIMS Origin: VylarisSpace must not win. A file:// repository (tests only) has no host,
+# apt matches it with an empty origin. "origin *" does not match the installed package (dpkg status).
+vyl_pin_content() {
+	local upstream="$1" own_scheme="${2:-}" own_host="${3:-}"
+	echo "# Managed by VylarisSpace (installer or client-setup.sh). Do not edit or remove: without these pins"
+	echo "# an upstream release of the \"hestia\" package would replace VylarisSpace (same package name)."
+	echo "# apt uses the FIRST matching stanza, keep the order."
+	echo
+	echo "# 1. Never from the upstream repository (its host name, or the Origin it claims)."
+	echo "Package: hestia"
+	echo "Pin: origin $upstream"
+	echo "Pin-Priority: -1"
+	echo
+	echo "Package: hestia"
+	echo "Pin: release o=$upstream"
+	echo "Pin-Priority: -1"
+	if [ -n "$own_scheme" ]; then
+		echo
+		if [ "$own_scheme" = 'file' ]; then
+			echo "# 2. From the VylarisSpace repository. A file:// repository has no host (tests only): any local source."
+			echo "Package: hestia"
+			echo "Pin: origin \"\""
+		else
+			echo "# 2. Only from the VylarisSpace repository host."
+			echo "Package: hestia"
+			echo "Pin: origin $own_host"
+		fi
+		echo "Pin-Priority: 1001"
+	fi
+	echo
+	echo "# 3. From no other remote source."
+	echo "Package: hestia"
+	echo "Pin: origin *"
+	echo "Pin-Priority: -1"
+}
+# ---- end of the part shared with src/vylaris/client-setup.sh -------------------------------------
+
+# Private temporary directory, removed when the installer ends (also on a refusal)
+vyl_make_tmp() {
+	if [ -z "$vyl_tmp" ]; then
+		vyl_tmp="$(mktemp -d)"
+		trap 'rm -rf "$vyl_tmp"' EXIT
+	fi
+}
+
+# Validate the package source options and decide where 'hestia' comes from.
+# Runs before anything on the system is touched: it only reads variables and local files. Every
+# check that needs no network is done here (URL, http opt-in, fingerprint format, credentials
+# format, key source, and a local key file when gpg is already installed). The checks that need
+# the network (download of the key, the suite) follow in vylaris_precheck.
+vylaris_prepare_config() {
+	if [ "$vyl_auth_from_flag" = 'yes' ]; then
+		echo "WARNING: --vylaris-repo-auth shows the password in the process list (ps) while the installer runs." >&2
+		echo "         Prefer the environment: VYLARIS_REPO_AUTH='user:password' bash $0 ..." >&2
+	fi
+
+	if [ -z "$vylaris_repo_url" ] && [ -z "$withdebs" ] && [ "$allow_upstream_hestia" != 'yes' ]; then
+		vylaris_refuse "No VylarisSpace package source was given, nothing has been changed.
+
+Without it this installer would install the 'hestia' package from the upstream
+HestiaCP repository ($RHOST), which contains the upstream
+interface and not $PRODUCT_NAME.
+
+Use one of:
+  --vylaris-repo <url>     VylarisSpace package repository (or env VYLARIS_REPO_URL)
+                           also needed: --vylaris-key-fingerprint <fingerprint> (or env
+                           VYLARIS_REPO_KEY_FPR) unless --vylaris-key is a local file
+                           optional: --vylaris-key <url|file>, --vylaris-repo-auth <user:password>
+                           (or env VYLARIS_REPO_KEY, VYLARIS_REPO_AUTH; env is preferred, a
+                           command line value is visible in the process list)
+  --with-debs <dir>        directory with hestia_*.deb built from this source
+  --allow-upstream-hestia  developers only: install the UPSTREAM hestia package"
+	fi
+
+	if [ -n "$vylaris_repo_url" ]; then
+		if [ "$allow_upstream_hestia" = 'yes' ]; then
+			vylaris_refuse "--allow-upstream-hestia cannot be combined with --vylaris-repo (the pin would conflict)."
+		fi
+		vyl_upstream_host="$RHOST"
+		vyl_validate_options
+
+		if [ -z "$vylaris_repo_suite" ]; then
+			vylaris_repo_suite="$codename"
+		fi
+		if ! [[ "$vylaris_repo_suite" =~ ^[a-z0-9-]+$ ]]; then
+			vylaris_refuse "Invalid repository suite: $vylaris_repo_suite"
+		fi
+		vylaris_updates='yes'
+
+		# A local key file can be checked now, before the system is touched (needs gpg;
+		# without it the check follows in vylaris_precheck)
+		if [ "$vyl_key_kind" = 'local' ] && command -v gpg > /dev/null 2>&1; then
+			vyl_make_tmp
+			vyl_load_key "$vyl_tmp"
+			vyl_key_loaded='yes'
+		fi
+	else
+		if [ -n "$vylaris_repo_key" ] || [ -n "$vylaris_repo_auth" ] || [ -n "$vylaris_repo_key_fpr" ]; then
+			vylaris_refuse "A repository key, key fingerprint or credentials were given without --vylaris-repo (or VYLARIS_REPO_URL)."
+		fi
+		vylaris_updates='no'
+	fi
+
+	if [ -n "$withdebs" ]; then
+		if [ ! -d "$withdebs" ]; then
+			vylaris_refuse "--with-debs: $withdebs is not a directory."
+		fi
+		if [ -z "$(ls "$withdebs"/hestia_*.deb 2> /dev/null)" ]; then
+			vylaris_refuse "--with-debs: no hestia_*.deb found in $withdebs."
+		fi
+	fi
+}
+
+# Fetch and check the public key and the repository (reads only, writes to a private temp dir).
+# Needs curl and gpg (installer_dependencies).
+vylaris_precheck() {
+	local release_url
+	[ -n "$vylaris_repo_url" ] || return 0
+	vyl_make_tmp
+
+	if [ "$vyl_key_loaded" != 'yes' ]; then
+		vyl_load_key "$vyl_tmp"
+		vyl_key_loaded='yes'
+	fi
+
+	# The repository must publish the suite for this distribution
+	release_url="$vylaris_repo_url/dists/$vylaris_repo_suite/InRelease"
+	if [ "$vyl_scheme" = 'file' ]; then
+		[ -r "${release_url#file://}" ] || vylaris_refuse "The repository has no suite '$vylaris_repo_suite' for this system ($release_url not found)."
+	else
+		vyl_curl "$release_url" "$vyl_tmp/InRelease" || vylaris_refuse "The repository has no suite '$vylaris_repo_suite' for this system or is not reachable ($release_url)."
+	fi
+}
+
+# Write the apt configuration: key, source list, pins, credentials.
+# The pins keep package 'hestia' away from every source except the own repository, so an upstream
+# release can never replace this fork. They are written BEFORE the upstream source list and before
+# any 'apt-get install hestia' (see vyl_pin_content for the stanzas and why the order matters).
+# The credentials are written to a root only file and then dropped from this shell.
+vylaris_write_apt_config() {
+	[ "$allow_upstream_hestia" != 'yes' ] || return 0
+
+	mkdir -p "$(dirname "$vyl_pref_file")"
+	if [ -n "$vylaris_repo_url" ]; then
+		vyl_pin_content "$RHOST" "$vyl_scheme" "$vyl_host" > "$vyl_pref_file"
+	else
+		vyl_pin_content "$RHOST" > "$vyl_pref_file"
+	fi
+	chmod 644 "$vyl_pref_file"
+
+	[ -n "$vylaris_repo_url" ] || return 0
+
+	mkdir -p "$(dirname "$vyl_keyring")" "$(dirname "$vyl_sources_list")"
+	install -m 644 "$vyl_tmp/key.gpg" "$vyl_keyring"
+	printf '# Managed by the VylarisSpace installer.\ndeb [arch=%s signed-by=%s] %s %s main\n' \
+		"$ARCH" "$vyl_keyring" "$vylaris_repo_url" "$vylaris_repo_suite" > "$vyl_sources_list"
+	chmod 644 "$vyl_sources_list"
+
+	if [ -n "$vyl_auth_user" ] && [ "$vyl_scheme" != 'file' ]; then
+		mkdir -p "$(dirname "$vyl_auth_file")"
+		(
+			umask 077
+			printf '# Managed by the VylarisSpace installer\nmachine %s login %s password %s\n' \
+				"$vyl_machine" "$vyl_auth_user" "$vyl_auth_pass" > "$vyl_auth_file"
+		)
+		chmod 600 "$vyl_auth_file"
+		chown root:root "$vyl_auth_file" 2> /dev/null || true
+	fi
+	# From here on apt reads the credentials from the file, nothing else needs them
+	vyl_auth_user=''
+	vyl_auth_pass=''
+}
+
+# Undo the own source after a failed check (keeps the pins, they only protect)
+vylaris_remove_apt_source() {
+	rm -f "$vyl_sources_list" "$vyl_keyring" "$vyl_auth_file"
+}
+
+# apt-get update restricted to the own source list (fast, fails early on a bad signature or login)
+vylaris_update_own_source() {
+	[ -n "$vylaris_repo_url" ] || return 0
+	apt-get -qq update -o Dir::Etc::sourcelist="$vyl_sources_list" -o Dir::Etc::sourceparts=- -o APT::Get::List-Cleanup=0 >> "$LOG" 2>&1
+}
+
+# The candidate for package hestia must come from the own repository.
+# Prints the candidate version. Returns 1 when there is no candidate or it comes from elsewhere.
+vylaris_check_candidate() {
+	local policy candidate origin_ok want
+	[ -n "$vylaris_repo_url" ] || return 0
+	policy="$(LC_ALL=C apt-cache policy hestia 2> /dev/null)"
+	candidate="$(printf '%s\n' "$policy" | awk '$1=="Candidate:"{print $2; exit}')"
+	if [ -z "$candidate" ] || [ "$candidate" = '(none)' ]; then
+		return 1
+	fi
+	# apt prints file:// sources as file:/path; compare without the scheme
+	want="${vylaris_repo_url#*://}"
+	want="${want#/}"
+	origin_ok="$(printf '%s\n' "$policy" | awk -v cand="$candidate" -v want="$want" '
+		/^ (\*\*\*|   ) [^ ]/ { cur = ($1 == "***" ? $2 : $1); next }
+		cur == cand && $1 ~ /^-?[0-9]+$/ {
+			u = $2
+			sub(/^[a-z]+:\/*/, "", u)
+			if (u == want || index(u, want "/") == 1) { print "yes"; exit }
+		}')"
+	[ "$origin_ok" = 'yes' ] || return 1
+	vyl_candidate="$candidate"
+	return 0
+}
+
+# Print the failure of the candidate check and stop
+vylaris_candidate_fail() {
+	vylaris_remove_apt_source
+	vylaris_refuse "The VylarisSpace repository cannot be used: apt could not read it (signature, key or login)
+or it does not offer a 'hestia' package for this system.
+
+Repository: $vylaris_repo_url (suite $vylaris_repo_suite, architecture $ARCH)
+Check: apt-cache policy hestia   (the candidate must come from the repository above)
+The apt source of the repository was removed again. Details: $LOG"
+}
+# Tell the administrator where the packages come from (no credentials are printed)
+print_package_source_info() {
+	if [ -n "$withdebs" ]; then
+		echo "Package source for hestia: local packages in $withdebs"
+	elif [ -n "$vylaris_repo_url" ]; then
+		echo "Package source for hestia: $vylaris_repo_url (suite $vylaris_repo_suite)"
+		if [ -n "$vylaris_repo_key_fpr" ]; then
+			echo "Repository key: $vyl_key_fpr (matches the given fingerprint)"
+		elif [ -n "$vyl_key_fpr" ]; then
+			echo -e "\e[33mRepository key: $vyl_key_fpr - NOT verified (local key file, no --vylaris-key-fingerprint).\e[0m"
+			echo -e "\e[33mCompare it with the fingerprint published by the repository owner before you continue.\e[0m"
+		fi
+	fi
+	if [ -n "$vylaris_repo_url" ] || [ -n "$withdebs" ]; then
+		echo "hestia-nginx, hestia-php and hestia-web-terminal: upstream package repository ($RHOST) unless found in --with-debs"
+	fi
+}
+# ---- END VylarisSpace package repository -----------------------------------------------------
 
 # Check whether a string is a public (globally routable) IPv4 address
 is_public_ipv4() {
@@ -348,9 +964,6 @@ version_ge() { test "$(printf '%s\n' "$@" | sort -V | head -n 1)" != "$1" -o -n 
 #                    Verifications                         #
 #----------------------------------------------------------#
 
-# Creating temporary file
-tmpfile=$(mktemp -p /tmp)
-
 # Translating argument to --gnu-long-options
 for arg; do
 	delim=""
@@ -386,6 +999,12 @@ for arg; do
 		--password) args="${args}-p " ;;
 		--force) args="${args}-f " ;;
 		--with-debs) args="${args}-D " ;;
+		--vylaris-repo) args="${args}-R " ;;
+		--vylaris-key) args="${args}-K " ;;
+		--vylaris-key-fingerprint) args="${args}-F " ;;
+		--vylaris-repo-auth) args="${args}-A " ;;
+		--allow-insecure-http) args="${args}-I " ;;
+		--allow-upstream-hestia) args="${args}-U " ;;
 		--help) args="${args}-h " ;;
 		*)
 			[[ "${arg:0:1}" == "-" ]] || delim="'"
@@ -396,41 +1015,57 @@ done
 eval set -- "$args"
 
 # Parsing arguments
-while getopts "a:w:v:j:k:m:M:g:d:x:z:Z:c:t:i:b:r:o:q:L:l:y:s:u:e:p:W:D:fh" Option; do
+while getopts "a:w:v:j:k:m:M:g:d:x:z:Z:c:t:i:b:r:o:q:L:l:y:s:u:e:p:W:D:R:K:F:A:UIfh" Option; do
 	case $Option in
-		a) apache=$OPTARG ;;        # Apache
-		w) phpfpm=$OPTARG ;;        # PHP-FPM
-		o) multiphp=$OPTARG ;;      # Multi-PHP
-		v) vsftpd=$OPTARG ;;        # Vsftpd
-		j) proftpd=$OPTARG ;;       # Proftpd
-		k) named=$OPTARG ;;         # Named
-		m) mysql=$OPTARG ;;         # MariaDB
-		M) mysql8=$OPTARG ;;        # MySQL
-		g) postgresql=$OPTARG ;;    # PostgreSQL
-		x) exim=$OPTARG ;;          # Exim
-		z) dovecot=$OPTARG ;;       # Dovecot
-		Z) sieve=$OPTARG ;;         # Sieve
-		c) clamd=$OPTARG ;;         # ClamAV
-		t) spamd=$OPTARG ;;         # SpamAssassin
-		i) iptables=$OPTARG ;;      # Iptables
-		b) fail2ban=$OPTARG ;;      # Fail2ban
-		q) quota=$OPTARG ;;         # FS Quota
-		L) resourcelimit=$OPTARG ;; # Resource Limitation
-		W) webterminal=$OPTARG ;;   # Web Terminal
-		r) port=$OPTARG ;;          # Backend Port
-		l) lang=$OPTARG ;;          # Language
-		d) api=$OPTARG ;;           # Activate API
-		y) interactive=$OPTARG ;;   # Interactive install
-		s) servername=$OPTARG ;;    # Hostname
-		e) email=$OPTARG ;;         # Admin email
-		u) username=$OPTARG ;;      # Admin username
-		p) vpass=$OPTARG ;;         # Admin password
-		D) withdebs=$OPTARG ;;      # Hestia debs path
-		f) force='yes' ;;           # Force install
-		h) help ;;                  # Help
-		*) help ;;                  # Print help (default)
+		a) apache=$OPTARG ;;               # Apache
+		w) phpfpm=$OPTARG ;;               # PHP-FPM
+		o) multiphp=$OPTARG ;;             # Multi-PHP
+		v) vsftpd=$OPTARG ;;               # Vsftpd
+		j) proftpd=$OPTARG ;;              # Proftpd
+		k) named=$OPTARG ;;                # Named
+		m) mysql=$OPTARG ;;                # MariaDB
+		M) mysql8=$OPTARG ;;               # MySQL
+		g) postgresql=$OPTARG ;;           # PostgreSQL
+		x) exim=$OPTARG ;;                 # Exim
+		z) dovecot=$OPTARG ;;              # Dovecot
+		Z) sieve=$OPTARG ;;                # Sieve
+		c) clamd=$OPTARG ;;                # ClamAV
+		t) spamd=$OPTARG ;;                # SpamAssassin
+		i) iptables=$OPTARG ;;             # Iptables
+		b) fail2ban=$OPTARG ;;             # Fail2ban
+		q) quota=$OPTARG ;;                # FS Quota
+		L) resourcelimit=$OPTARG ;;        # Resource Limitation
+		W) webterminal=$OPTARG ;;          # Web Terminal
+		r) port=$OPTARG ;;                 # Backend Port
+		l) lang=$OPTARG ;;                 # Language
+		d) api=$OPTARG ;;                  # Activate API
+		y) interactive=$OPTARG ;;          # Interactive install
+		s) servername=$OPTARG ;;           # Hostname
+		e) email=$OPTARG ;;                # Admin email
+		u) username=$OPTARG ;;             # Admin username
+		p) vpass=$OPTARG ;;                # Admin password
+		D) withdebs=$OPTARG ;;             # Hestia debs path
+		R) vylaris_repo_url=$OPTARG ;;     # VylarisSpace package repository
+		K) vylaris_repo_key=$OPTARG ;;     # Repository key (URL or file)
+		F) vylaris_repo_key_fpr=$OPTARG ;; # Repository key fingerprint
+		A)
+			vylaris_repo_auth=$OPTARG # Repository login user:password
+			vyl_auth_from_flag='yes'
+			;;
+		I) vylaris_allow_http='yes' ;;    # Accept an http:// repository (tests only)
+		U) allow_upstream_hestia='yes' ;; # Developers: upstream hestia package
+		f) force='yes' ;;                 # Force install
+		h) help ;;                        # Help
+		*) help ;;                        # Print help (default)
 	esac
 done
+
+# The option string (it may carry the repository credentials) is no longer needed
+unset args arg delim OPTARG
+set --
+
+# Package source: refuse before anything on the system is touched
+vylaris_prepare_config
 
 if [ -n "$multiphp" ]; then
 	if [ "$multiphp" != 'no' ] && [ "$multiphp" != 'yes' ]; then
@@ -643,25 +1278,10 @@ if [ -d /etc/netplan ] && [ -z "$force" ]; then
 	fi
 fi
 
-# Validate whether installation script matches release version before continuing with install
-if [ -z "$HESTIA_CHANNEL" ] && [ ! -d "$withdebs" ]; then
-	release_branch_ver=$(curl -s https://raw.githubusercontent.com/hestiacp/hestiacp/release/src/deb/hestia/control | grep "Version:" | awk '{print $2}')
-	if [ "$HESTIA_INSTALL_VER" != "$release_branch_ver" ]; then
-		echo
-		echo -e "\e[91mInstallation aborted\e[0m"
-		echo "===================================================================="
-		echo -e "\e[33mERROR: Install script version does not match package version!\e[0m"
-		echo -e "\e[33mPlease download the installer from the release branch in order to continue:\e[0m"
-		echo ""
-		echo -e "\e[33mhttps://raw.githubusercontent.com/hestiacp/hestiacp/release/install/hst-install.sh\e[0m"
-		echo ""
-		echo -e "\e[33mTo test pre-release versions, build the .deb packages and re-run the installer:\e[0m"
-		echo -e "  \e[33m./hst_autocompile.sh \e[1m--hestia branchname no\e[21m\e[0m"
-		echo -e "  \e[33m./hst-install.sh .. \e[1m--with-debs /tmp/hestiacp-src/debs\e[21m\e[0m"
-		echo ""
-		check_result 1 "Installation aborted"
-	fi
-fi
+# Check the own package repository (key, suite). The installer version is no longer
+# compared with the upstream release branch: package 'hestia' comes from the own
+# repository only. The candidate check follows once the source list is written.
+vylaris_precheck
 
 case $architecture in
 	x86_64)
@@ -715,6 +1335,7 @@ install_welcome_message() {
 clear
 install_welcome_message
 print_upstream_repo_warning
+print_package_source_info
 echo
 
 # Web stack
@@ -989,8 +1610,21 @@ Unattended-Upgrade::Origins-Pattern {
 EOF
 fi
 
-# Installing HestiaCP repo
+# Installing VylarisSpace repo (pins first: package hestia must never come from the upstream repository)
 echo "[ * ] $PRODUCT_NAME package repository"
+vylaris_write_apt_config
+if [ -n "$vylaris_repo_url" ]; then
+	vylaris_update_own_source || vylaris_candidate_fail
+	vylaris_check_candidate || vylaris_candidate_fail
+	echo "    - repository key fingerprint: $vyl_key_fpr"
+	echo "    - hestia package version offered: $vyl_candidate"
+	if [ "${vyl_candidate%%-*}" != "$HESTIA_BASE_VER" ]; then
+		echo -e "\e[33m    - note: this installer is for $HESTIA_BASE_VER, the repository offers ${vyl_candidate%%-*}\e[0m"
+	fi
+fi
+
+# Installing HestiaCP repo (upstream: hestia-nginx, hestia-php and hestia-web-terminal only,
+# its key is fetched from the upstream host; install/deb/deb_signing.key is not used here)
 echo "deb [arch=$ARCH signed-by=/usr/share/keyrings/hestia-keyring.gpg] https://$RHOST/ $codename main" > $apt/hestia.list
 curl -s "https://$RHOST/pubkey.gpg" | gpg --dearmor | tee /usr/share/keyrings/hestia-keyring.gpg > /dev/null 2>&1
 
@@ -1031,6 +1665,9 @@ echo
 # Updating system
 echo -ne "Updating currently installed packages, please wait... "
 apt-get -qq update
+if [ -n "$vylaris_repo_url" ]; then
+	vylaris_check_candidate || vylaris_candidate_fail
+fi
 apt-get -y upgrade >> $LOG &
 BACK_PID=$!
 
@@ -1225,6 +1862,9 @@ if [ -d "$withdebs" ]; then
 	software=$(echo "$software" | sed -e "s/hestia-php//")
 	software=$(echo "$software" | sed -e "s/hestia-web-terminal//")
 	software=$(echo "$software" | sed -e "s/hestia=${HESTIA_INSTALL_BUILD}//")
+elif [ -n "$vylaris_repo_url" ]; then
+	# hestia comes from the own repository (pinned, newest version of the suite)
+	software=$(echo "$software" | sed -e "s/hestia=${HESTIA_INSTALL_BUILD}/hestia/")
 fi
 if [ "$release" = '24.04' ]; then
 	software=$(echo "$software" | sed -e "s/libzip4/libzip4t64/")
@@ -1621,6 +2261,9 @@ write_config_value "HIDE_DOCS" "yes"
 
 # Upstream update channels (apt.hestiacp.com, GitHub) are disabled
 write_config_value "UPSTREAM_UPDATES" "$upstream_updates"
+
+# Updates from the own VylarisSpace package repository
+write_config_value "VYLARIS_UPDATES" "$vylaris_updates"
 
 # Inactive session timeout
 write_config_value "INACTIVE_SESSION_TIMEOUT" "60"

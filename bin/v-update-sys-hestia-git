@@ -29,6 +29,15 @@ if [ "${UPSTREAM_UPDATES:-no}" != "yes" ]; then
 	exit 0
 fi
 
+# With the own package source in use this script must not run: it installs the built
+# package with dpkg -i, which ignores the apt pins that keep the upstream package
+# away from this server.
+if [ "${VYLARIS_UPDATES:-no}" = "yes" ]; then
+	echo "Own updates are enabled (VYLARIS_UPDATES=yes) - the update from Git is refused, VylarisSpace is updated from its own package source (v-update-sys-vylaris)."
+	"$BIN/v-log-action" "system" "Warning" "Updates" "Update from Git refused (VYLARIS_UPDATES=yes)."
+	exit 0
+fi
+
 # Perform verification if read-only mode is enabled
 check_hestia_demo_mode
 

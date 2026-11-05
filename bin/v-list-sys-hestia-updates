@@ -21,7 +21,7 @@ source $HESTIA/func/main.sh
 # load config file
 source_conf "$HESTIA/conf/hestia.conf"
 
-fields="\$NAME \$VERSION \$ARCH \$UPDATED \$DESCR \$TIME \$DATE"
+fields="\$NAME \$VERSION \$ARCH \$UPDATED \$DESCR \$TIME \$DATE \$CANDIDATE \$AUTOUPDATE"
 
 # Check details of installed .deb package function
 check_installed_deb() {
@@ -47,7 +47,9 @@ json_list() {
         "UPDATED": "'$UPDATED'",
         "DESCR": "'$DESCR'",
         "TIME": "'$TIME'",
-        "DATE": "'$DATE'"
+        "DATE": "'$DATE'",
+        "CANDIDATE": "'$CANDIDATE'",
+        "AUTOUPDATE": "'$AUTOUPDATE'"
     }'
 		if [ "$i" -lt "$objects" ]; then
 			echo ','
@@ -93,8 +95,25 @@ if [ -n "$hestia_v" ] && [ "$hestia_v" \> "$VERSION" ]; then
 	UPDATED='no'
 fi
 
+# Own package source (VYLARIS_UPDATES='yes'): newer version offered by the own source,
+# from the lists of the last refresh (no network access) and the state of its cron job
+own_candidate=''
+own_autoupdate=''
+if [ "${VYLARIS_UPDATES:-no}" = "yes" ]; then
+	own_status=$($BIN/v-update-sys-vylaris status 2> /dev/null)
+	if echo "$own_status" | grep -q '^available=yes$'; then
+		own_candidate=$(echo "$own_status" | sed -n 's/^candidate=//p' | head -n 1)
+		UPDATED='no'
+	fi
+	own_autoupdate='no'
+	if grep -q 'v-update-sys-vylaris' /var/spool/cron/crontabs/hestiaweb 2> /dev/null; then
+		own_autoupdate='yes'
+	fi
+fi
+
 data="NAME='hestia' VERSION='$VERSION' ARCH='$ARCH'"
 data="$data UPDATED='$UPDATED' DESCR='VylarisSpace core package' TIME='$TIME' DATE='$DATE'"
+data="$data CANDIDATE='$own_candidate' AUTOUPDATE='$own_autoupdate'"
 
 # Checking installed hestia-php version
 check_installed_deb hestia-php
@@ -106,7 +125,7 @@ fi
 
 data="$data\nNAME='hestia-php' VERSION='$VERSION'"
 data="$data ARCH='$ARCH' UPDATED='$UPDATED' DESCR='VylarisSpace internal PHP interpreter'"
-data="$data TIME='$TIME' DATE='$DATE'"
+data="$data TIME='$TIME' DATE='$DATE' CANDIDATE='' AUTOUPDATE=''"
 
 # Checking installed hestia-nginx version
 check_installed_deb hestia-nginx
@@ -118,7 +137,7 @@ fi
 
 data="$data\nNAME='hestia-nginx' VERSION='$VERSION'"
 data="$data ARCH='$ARCH' UPDATED='$UPDATED' DESCR='VylarisSpace internal web server'"
-data="$data TIME='$TIME' DATE='$DATE'"
+data="$data TIME='$TIME' DATE='$DATE' CANDIDATE='' AUTOUPDATE=''"
 
 # Listing data
 case $format in

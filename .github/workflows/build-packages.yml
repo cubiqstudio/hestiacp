@@ -1,0 +1,354 @@
+name: Build packages
+
+# Stage 1 of VYLARIS-PACKAGING.md: build the 'hestia' package (the panel) and optionally publish it
+# to the own apt repository. hestia-nginx, hestia-php and hestia-web-terminal are not built here
+# (stage 2, they keep coming from the upstream apt repository).
+#
+# Nothing in this file is secret. The publish job needs these repository secrets (Settings, Secrets
+# and variables, Actions) and one repository variable; without the variable it never runs:
+#
+#   variable VYLARIS_PUBLISH   'true' to enable the publish job
+#   secret   REPO_SSH_KEY      private key of a deploy user on the repository host (key only for this)
+#   secret   REPO_KNOWN_HOSTS  the host's public key line(s) as in a known_hosts file (verified, not scanned)
+#   secret   REPO_HOST         host name of the repository host
+#   secret   REPO_USER         user on that host (owner of the repository directory)
+#   secret   REPO_PATH         absolute path of the repository directory made by src/vylaris/repo-init.sh
+#   secret   REPO_GNUPGHOME    optional, GnuPG home with the signing subkey on the host (else the user's default)
+#
+# Pushed tags and runs without a choice publish into the <codename>-staging suites (repo-init.sh
+# --staging). Promote by hand after a test: src/vylaris/repo-publish.sh --promote. Only a manual
+# run with target 'live' publishes straight into the real suites.
+#
+# Third-party actions are referenced by major version tag, not by commit SHA: the SHAs cannot be
+# verified offline. Pin them to SHAs when this file is reviewed on a connected machine.
+
+on:
+  workflow_dispatch:
+    inputs:
+      pkgrev:
+        description: "Package revision (version suffix -<n>+<distro>), 100 or higher"
+        required: false
+        default: "100"
+        type: string
+      branch:
+        description: "Branch or tag to build (empty: the ref the workflow was started on)"
+        required: false
+        default: ""
+        type: string
+      target:
+        description: "Publish target when the publish job is enabled"
+        required: false
+        default: "staging"
+        type: choice
+        options:
+          - staging
+          - live
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-hestia:
+    name: Build hestia (${{ matrix.suite }}, ${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: noble
+            distro: ubuntu24.04
+            arch: amd64
+            runner: ubuntu-24.04
+          # The other suites are prepared but not active. Reasons:
+          # - The package version carries the distribution (1.10.5-100+ubuntu24.04). The suffix is
+          #   read from lsb_release of the machine that builds, so each suite is built on a machine
+          #   (or container) of that distribution. Contents are the same, only the control file differs.
+          #   Alternative without containers: 'src/hst_autocompile.sh --hestia --cross' builds every
+          #   suffix and both architectures on one runner; then select the files by name. That path
+          #   has not been run in CI yet, so it is not used.
+          # - jammy: GitHub provides a native runner image.
+          # - bookworm, trixie: no runner image. They need 'container: debian:12' / 'debian:13' with
+          #   git, ca-certificates, sudo, lsb-release installed first (the checkout action needs git).
+          # - arm64: needs native arm64 runners (ubuntu-24.04-arm). For a private repository these are
+          #   paid larger runners, so decide on the CI provider first (VYLARIS-PACKAGING.md, section 6).
+          # - suite: jammy
+          #   distro: ubuntu22.04
+          #   arch: amd64
+          #   runner: ubuntu-22.04
+          # - suite: bookworm
+          #   distro: debian12
+          #   arch: amd64
+          #   runner: ubuntu-24.04
+          #   container: debian:12
+          # - suite: trixie
+          #   distro: debian13
+          #   arch: amd64
+          #   runner: ubuntu-24.04
+          #   container: debian:13
+    env:
+      BUILD_DIR: ${{ github.workspace }}/../vylaris-build
+      DEB_DIR: ${{ github.workspace }}/../vylaris-build/deb
+    steps:
+      - name: Check inputs
+        id: params
+        env:
+          INPUT_PKGREV: ${{ inputs.pkgrev }}
+          INPUT_BRANCH: ${{ inputs.branch }}
+          REF_TYPE: ${{ github.ref_type }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          pkgrev="${INPUT_PKGREV:-100}"
+          if [ "$REF_TYPE" = 'tag' ]; then
+            # v1.10.5-100 builds package revision 100; v1.10.5 alone uses the default 100
+            if [[ "$REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)-([0-9]+)$ ]]; then
+              tag_base="${BASH_REMATCH[1]}"
+              pkgrev="${BASH_REMATCH[2]}"
+            elif [[ "$REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+              tag_base="${BASH_REMATCH[1]}"
+              pkgrev=100
+            else
+              echo "::error::Tag '$REF_NAME' is not of the form vX.Y.Z or vX.Y.Z-<pkgrev>"
+              exit 1
+            fi
+            echo "tag_base=$tag_base" >> "$GITHUB_OUTPUT"
+          fi
+          if ! [[ "$pkgrev" =~ ^[0-9]+$ ]]; then
+            echo "::error::pkgrev must be a number"
+            exit 1
+          fi
+          if [ "$pkgrev" -lt 100 ]; then
+            echo "::error::pkgrev must be 100 or higher (VYLARIS-PACKAGING.md, section 2): an own build has to be newer than upstream's -1"
+            exit 1
+          fi
+          if ! [[ "$INPUT_BRANCH" =~ ^[A-Za-z0-9._/-]*$ ]]; then
+            echo "::error::branch contains characters that are not allowed"
+            exit 1
+          fi
+          echo "pkgrev=$pkgrev" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v7
+        with:
+          # No engines field or .nvmrc exists. Node.js 24 is what src/hst_autocompile.sh installs
+          # when none is present; the script requires 18 or higher.
+          node-version: "24"
+
+      - name: Check build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends lsb-release unzip dpkg-dev jq
+          # Composer bundles web/inc/vendor into the package (customer servers need no network for it)
+          if ! command -v composer > /dev/null 2>&1; then
+            sudo apt-get install -y --no-install-recommends composer
+          fi
+          composer --version
+          node --version
+          npm --version
+
+      - name: Check tag against the package version
+        if: github.ref_type == 'tag'
+        env:
+          TAG_BASE: ${{ steps.params.outputs.tag_base }}
+        run: |
+          set -euo pipefail
+          control_version="$(sed -n 's/^Version: *//p' src/deb/hestia/control | head -n1)"
+          if [ "$control_version" != "$TAG_BASE" ]; then
+            echo "::error::Tag version $TAG_BASE differs from src/deb/hestia/control ($control_version)"
+            exit 1
+          fi
+
+      - name: Build the hestia package
+        env:
+          PKGREV: ${{ steps.params.outputs.pkgrev }}
+        run: |
+          set -euo pipefail
+          mkdir -p "$BUILD_DIR"
+          # root is needed for the apt calls and the file ownership inside the package
+          sudo -E env "PATH=$PATH" bash src/hst_autocompile.sh --hestia --noinstall --keepbuild --pkgrev "$PKGREV" "~localsrc"
+          sudo chown -R "$(id -u):$(id -g)" "$BUILD_DIR"
+
+      - name: Collect and check the package
+        id: collect
+        env:
+          PKGREV: ${{ steps.params.outputs.pkgrev }}
+          DISTRO: ${{ matrix.distro }}
+          ARCH: ${{ matrix.arch }}
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/out"
+          rm -rf "$out"
+          mkdir -p "$out"
+          base="$(sed -n 's/^Version: *//p' src/deb/hestia/control | head -n1)"
+          expected="${base}-${PKGREV}+${DISTRO}"
+          deb="$DEB_DIR/hestia_${expected}_${ARCH}.deb"
+          if [ ! -f "$deb" ]; then
+            echo "::error::Expected package not found: $(basename "$deb")"
+            ls -la "$DEB_DIR" || true
+            exit 1
+          fi
+          cp -- "$deb" "$out/"
+          deb="$out/$(basename "$deb")"
+          dpkg-deb -f "$deb" Package Version Architecture
+          [ "$(dpkg-deb -f "$deb" Package)" = 'hestia' ]
+          [ "$(dpkg-deb -f "$deb" Version)" = "$expected" ]
+          # The package has to carry its PHP dependencies and the QR code library
+          dpkg-deb -c "$deb" > "$RUNNER_TEMP/contents.txt"
+          grep -q ' \./usr/local/hestia/web/inc/vendor/autoload.php$' "$RUNNER_TEMP/contents.txt"
+          grep -q ' \./usr/local/hestia/web/inc/vendor/bacon/bacon-qr-code/' "$RUNNER_TEMP/contents.txt"
+          grep -q ' \./usr/local/hestia/web/css/themes/vylaris.min.css$' "$RUNNER_TEMP/contents.txt"
+          (cd "$out" && sha256sum -- ./*.deb | sed 's# \./# #' > SHA256SUMS && cat SHA256SUMS)
+          echo "deb=$(basename "$deb")" >> "$GITHUB_OUTPUT"
+          {
+            echo "### hestia package ${{ matrix.suite }} ${{ matrix.arch }}"
+            echo
+            echo '```text'
+            cat "$out/SHA256SUMS"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the package
+        uses: actions/upload-artifact@v4
+        with:
+          name: hestia-deb-${{ matrix.suite }}-${{ matrix.arch }}
+          path: ${{ runner.temp }}/out/
+          if-no-files-found: error
+          retention-days: 30
+
+  publish:
+    name: Publish to the own repository
+    needs: build-hestia
+    # Runs only when the repository variable VYLARIS_PUBLISH is 'true'.
+    if: ${{ vars.VYLARIS_PUBLISH == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: vylaris-repo
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.branch }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          pattern: hestia-deb-*
+          merge-multiple: true
+          path: ${{ runner.temp }}/debs
+
+      - name: Check the downloaded packages
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP/debs"
+          ls -la
+          # Every file has to be the hestia package (the per-artifact SHA256SUMS files overwrite
+          # each other with merge-multiple and are not used here)
+          for f in hestia_*.deb; do
+            test -f "$f"
+            test "$(dpkg-deb -f "$f" Package)" = 'hestia'
+          done
+          sha256sum -- hestia_*.deb
+
+      - name: Prepare SSH
+        env:
+          REPO_SSH_KEY: ${{ secrets.REPO_SSH_KEY }}
+          REPO_KNOWN_HOSTS: ${{ secrets.REPO_KNOWN_HOSTS }}
+          REPO_HOST: ${{ secrets.REPO_HOST }}
+        run: |
+          set -euo pipefail
+          for v in REPO_SSH_KEY REPO_KNOWN_HOSTS REPO_HOST; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Secret $v is not set"
+              exit 1
+            fi
+          done
+          install -d -m 700 "$HOME/.ssh"
+          umask 077
+          printf '%s\n' "$REPO_SSH_KEY" > "$HOME/.ssh/vylaris_repo_key"
+          printf '%s\n' "$REPO_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+
+      - name: Upload and publish
+        env:
+          REPO_HOST: ${{ secrets.REPO_HOST }}
+          REPO_USER: ${{ secrets.REPO_USER }}
+          REPO_PATH: ${{ secrets.REPO_PATH }}
+          REPO_GNUPGHOME: ${{ secrets.REPO_GNUPGHOME }}
+          TARGET: ${{ inputs.target }}
+        run: |
+          set -euo pipefail
+          for v in REPO_USER REPO_PATH; do
+            if [ -z "${!v}" ]; then
+              echo "::error::Secret $v is not set"
+              exit 1
+            fi
+          done
+          if ! [[ "$REPO_PATH" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::REPO_PATH must be an absolute path without spaces or special characters"
+            exit 1
+          fi
+          # Pushed tags and runs without an explicit choice go to the staging suites
+          target="${TARGET:-staging}"
+          if [ "$target" != 'staging' ] && [ "$target" != 'live' ]; then
+            echo "::error::target must be staging or live"
+            exit 1
+          fi
+          commit="$(git rev-parse HEAD)"
+          ssh_opts=(-i "$HOME/.ssh/vylaris_repo_key" -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes -o BatchMode=yes)
+          remote="${REPO_USER}@${REPO_HOST}"
+          # Incoming area next to the repository directory: debs and a checkout of this commit
+          # (repo-publish.sh makes the GPL source archive with 'git archive' from it).
+          incoming="${REPO_PATH%/}-incoming/${GITHUB_RUN_ID}"
+          # shellcheck disable=SC2029 # the path is validated above and meant to expand on this side
+          ssh "${ssh_opts[@]}" "$remote" "umask 077 && rm -rf '$incoming' && mkdir -p '$incoming/debs' '$incoming/src'"
+          rsync -e "ssh ${ssh_opts[*]}" -a --chmod=F644 "$RUNNER_TEMP"/debs/hestia_*.deb "$remote:$incoming/debs/"
+          rsync -e "ssh ${ssh_opts[*]}" -a --exclude=node_modules ./ "$remote:$incoming/src/"
+          # The remote script is read from stdin; values are passed as positional parameters
+          ssh "${ssh_opts[@]}" "$remote" bash -s -- "$REPO_PATH" "$incoming" "$commit" "$target" "$REPO_GNUPGHOME" << 'REMOTE'
+          set -euo pipefail
+          repo="$1"; incoming="$2"; commit="$3"; target="$4"; gnupghome="${5:-}"
+          # The signing home (a GnuPG home with the signing subkey) lives on the host
+          if [ -n "$gnupghome" ]; then export GNUPGHOME="$gnupghome"; fi
+          cd "$incoming/src"
+          git checkout --quiet --detach "$commit"
+          if [ -n "$(git status --porcelain)" ]; then echo "source checkout is not clean" >&2; exit 1; fi
+          # One repo-publish.sh call per suite (the suite follows from the version suffix)
+          for suite in bookworm trixie jammy noble; do
+            case "$suite" in
+              bookworm) suffix='+debian12' ;;
+              trixie) suffix='+debian13' ;;
+              jammy) suffix='+ubuntu22.04' ;;
+              noble) suffix='+ubuntu24.04' ;;
+            esac
+            debs=()
+            for f in "$incoming"/debs/hestia_*"$suffix"_*.deb; do
+              [ -f "$f" ] && debs+=("$f")
+            done
+            [ "${#debs[@]}" -gt 0 ] || continue
+            suite_arg=()
+            if [ "$target" = 'staging' ]; then suite_arg=(--suite "$suite-staging"); fi
+            src/vylaris/repo-publish.sh "${suite_arg[@]}" --source-repo "$incoming/src" --source-commit "$commit" "$repo" "${debs[@]}"
+          done
+          rm -rf "$incoming"
+          REMOTE
+
+      - name: Remove the SSH key
+        if: always()
+        run: rm -f "$HOME/.ssh/vylaris_repo_key" "$HOME/.ssh/known_hosts"

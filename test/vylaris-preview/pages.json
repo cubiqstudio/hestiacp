@@ -380,6 +380,25 @@
 			"tab": "SERVER"
 		},
 		{
+			"id": "list-updates-own-available",
+			"group": "list",
+			"template": "list_updates",
+			"tab": "SERVER",
+			"variant": "own-available",
+			"session": { "VYLARIS_UPDATES": "yes" }
+		},
+		{
+			"id": "list-updates-own-current",
+			"group": "list",
+			"template": "list_updates",
+			"tab": "SERVER",
+			"variant": "own-current",
+			"session": {
+				"VYLARIS_UPDATES": "yes",
+				"ok_msg": "The package source has been checked."
+			}
+		},
+		{
 			"id": "list-keys",
 			"group": "list",
 			"template": "list_key",

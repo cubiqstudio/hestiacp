@@ -39,6 +39,21 @@ if [ "$key" = "UPSTREAM_UPDATES" ]; then
 	is_boolean_format_valid "$value" 'UPSTREAM_UPDATES'
 fi
 
+# VYLARIS_UPDATES switches the update channel of the own package source on or off
+if [ "$key" = "VYLARIS_UPDATES" ]; then
+	is_boolean_format_valid "$value" 'VYLARIS_UPDATES'
+fi
+
+# The two update channels exclude each other: the upstream channels install the
+# upstream package (the apt pins block it, a direct dpkg -i does not), the own
+# channel updates from the own package source only.
+if [ "$key" = "UPSTREAM_UPDATES" ] && [ "$value" = "yes" ] && [ "${VYLARIS_UPDATES:-no}" = "yes" ]; then
+	check_result "$E_INVALID" "UPSTREAM_UPDATES cannot be enabled while VYLARIS_UPDATES is yes (switch the own package source off first)"
+fi
+if [ "$key" = "VYLARIS_UPDATES" ] && [ "$value" = "yes" ] && [ "${UPSTREAM_UPDATES:-no}" = "yes" ]; then
+	check_result "$E_INVALID" "VYLARIS_UPDATES cannot be enabled while UPSTREAM_UPDATES is yes (switch the upstream update channels off first)"
+fi
+
 #----------------------------------------------------------#
 #                       Action                             #
 #----------------------------------------------------------#
@@ -61,6 +76,13 @@ if [ "$key" == "APP_NAME" ]; then
 	if [ -f "$config_file" ] && [ -w "$config_file" ]; then
 		# Sed replaces only the value after "File Manager -"
 		sed -i "s|\(\$dist_config\[\"frontend_config\"\]\[\"app_name\"\] = \"File Manager - \).*\";|\1${value}\";|" "$config_file"
+	fi
+fi
+
+# Switching the own update channel off also removes its cron job
+if [ "$key" = "VYLARIS_UPDATES" ] && [ "$value" = "no" ]; then
+	if grep -q 'v-update-sys-vylaris' /var/spool/cron/crontabs/hestiaweb 2> /dev/null; then
+		$BIN/v-delete-cron-vylaris-autoupdate > /dev/null 2>&1
 	fi
 fi
 
