@@ -8,7 +8,8 @@ Private fork of [HestiaCP](https://github.com/hestiacp/hestiacp) by VylarisGroup
 | ----- | ---------------------------------------------------------------------- | ----------- |
 | 0     | Brand foundation, logos, tokens                                        | done        |
 | 1     | Design: themes `vylaris` and `vylaris-dark`, preview and audit tooling | done        |
-| 3     | Branding and safe defaults (see below)                                 | in progress |
+| 3     | Branding and safe defaults (see below)                                 | done        |
+| 4     | Own package repository, stage 1, hardened (see below)                  | implemented |
 
 Packaging (own package repository) is described in [VYLARIS-PACKAGING.md](VYLARIS-PACKAGING.md). The changes are listed in [CHANGELOG-VYLARIS.md](CHANGELOG-VYLARIS.md).
 
@@ -114,8 +115,9 @@ Renaming these would break the running system or make merges from upstream impos
 The upstream update channels would replace this fork with upstream HestiaCP. The new key `UPSTREAM_UPDATES` in `hestia.conf` defaults to `no`:
 
 - The installers write it, `func/syshealth.sh` adds it when it is missing, `v-list-sys-config` lists it and `v-change-sys-config-value` accepts it.
+- `UPSTREAM_UPDATES` and the own channel `VYLARIS_UPDATES` cannot both be `yes`: `v-change-sys-config-value` refuses (see phase 4).
 - With `no`, the Updates page and button, the autoupdate cron job (it is not installed by default), `v-update-sys-hestia`, `v-update-sys-hestia-all`, `v-update-sys-hestia-git`, the download part of `v-update-white-label-logo`, `v-change-sys-release` and every other code path that downloads or installs from the upstream package source or repositories stop without network access and print one line: "Upstream updates are disabled (UPSTREAM_UPDATES=no) - VylarisSpace is updated through its own package source."
-- The installer still takes packages from the upstream source until the own package repository exists (`VYLARIS-PACKAGING.md`) and prints a warning. `--with-debs` installs self-built packages.
+- Since phase 4 the installers no longer take the panel package from the upstream source. See the next section.
 
 ### Two-factor authentication
 
@@ -129,10 +131,29 @@ All upstream links shown to users are removed: documentation, forum, GitHub issu
 
 Only `vylaris` and `vylaris-dark` (and custom themes under `web/css/themes/custom`) are offered in the theme dropdowns of customers and admins. The legacy themes `default`, `dark`, `flat` and `vestia` are hidden; their files and CSS stay untouched because `default.css` is the mandatory base.
 
+## Phase 4: own package repository (stage 1, hybrid)
+
+Decisions (the engineering details are in [VYLARIS-PACKAGING.md](VYLARIS-PACKAGING.md)):
+
+- The own apt repository carries only the package `hestia` (the panel). `hestia-nginx`, `hestia-php` and `hestia-web-terminal` still come from the upstream package source, signed by upstream. Building them is stage 2 and remains a plan.
+- Because the package name and the base version are the same as upstream's, apt pinning is mandatory. `/etc/apt/preferences.d/vylarisspace` has four stanzas for the package `hestia`, in this order (apt uses the first that matches): the upstream origin `apt.hestiacp.com` at -1, the upstream `release o=apt.hestiacp.com` at -1, the own repository by **host** (`Pin: origin REPO_HOST`, an empty origin for a `file://` test repository) at 1001, and `origin *` at -1. The pin is bound to the host, not to the path and not to the `Origin` field of the Release file (any repository can claim an Origin), so the host of the own repository has to be dedicated to it. Moving the repository to another host means running `src/vylaris/client-setup.sh` again. An explicit `apt-get install hestia=VERSION` still installs from a blocked source: the pins protect the candidate selection and upgrades only.
+- Versions are the base version plus the package revision from 100 on, for example `1.10.5-100+ubuntu24.04`. Never lower than upstream's base version.
+- The signing key is new and is created on the owner's infrastructure with `src/vylaris/make-signing-key.sh`. No key, password or host is stored in the repository. The repository URL, key and credentials are configured by the owner (`VYLARIS_REPO_URL`, `VYLARIS_REPO_KEY`, `VYLARIS_REPO_KEY_FPR`, `VYLARIS_REPO_AUTH`, installer options `--vylaris-repo`, `--vylaris-key`, `--vylaris-key-fingerprint`, `--vylaris-repo-auth`). There is no default host.
+- Key trust: the repository must be https (`http` only with `--allow-insecure-http` or `VYLARIS_ALLOW_INSECURE_HTTP=yes`, for tests). A key that is downloaded needs the fingerprint of its primary key (`--vylaris-key-fingerprint` or `VYLARIS_REPO_KEY_FPR`), published by the owner out of band (`gpg --show-keys --with-fingerprint pubkey.asc` on the owner's machine). A local key file may omit it, the script then prints the fingerprint. A key file must hold exactly one primary key, no secret key, and must not be expired or revoked.
+- Credentials (`VYLARIS_REPO_AUTH`) are read once, written to `/etc/apt/auth.conf.d/vylarisspace.conf` (mode 0600) and removed from the environment. They are only sent over https to the exact same host and port. Tracing is switched off while credentials may be present. The command line option shows the password in the process list, so prefer the environment variable. Error messages mask the user info of URLs.
+- The installers refuse to run without a package source, so a server never gets the upstream interface by accident. `--allow-upstream-hestia` exists for developers. The installers no longer compare versions with, or download scripts from, the upstream project. Checks that need no network run first and change nothing; the key download, the fingerprint of a downloaded key and the check for the suite follow after `apt-get update` and the installation of the installer dependencies.
+- `UPSTREAM_UPDATES` stays `no`. The new key `VYLARIS_UPDATES` (default `no`, set to `yes` by the installers when a repository was configured) controls the own update path: `bin/v-update-sys-vylaris`, a cron job, and the Updates page with the installed and the available version and the buttons "Check for Updates" and "Update Now". The two keys exclude each other: `v-change-sys-config-value` refuses to enable one while the other is `yes`, and `v-update-sys-hestia-git` refuses to run while `VYLARIS_UPDATES` is `yes`. The upstream update buttons of the panel are intentionally not available in hybrid mode.
+- `v-update-sys-vylaris` refuses (exit code 10) when the pin file is missing or edited and updates only from the own source; `status` prints `pin_ok=yes|no`. Restore the file by running `client-setup.sh` again.
+- Stage-1 trade-off: the pins block only the package `hestia`. `hestia-nginx`, `hestia-php` and `hestia-web-terminal` receive their updates from the upstream repository through the normal system `apt upgrade`. That keeps the upstream repository a trusted root for them until stage 2.
+- The package bundles the PHP libraries (`web/inc/vendor`). Composer fetches them from Packagist and GitHub at build time (the build host needs `composer`), servers do not fetch them at runtime. Development files and Markdown documentation of the libraries are not shipped, licence files are.
+- CI: `.github/workflows/build-packages.yml` builds the package and can publish it to the repository host.
+
+Open items for the owner: host name and public or private operation, the `Maintainer` and `Homepage` fields in `src/deb/*/control`, the legal review of distribution (GPL source offer, package names), stage 2.
+
 ### Repository and documentation
 
 - Credits live in `NOTICE` and this file, not in the UI.
 - `README.md`, `CONTRIBUTING.md` and `SECURITY.md` are rewritten for the fork. Security reports go to the repository owner through GitHub's private vulnerability reporting.
 - The translation workflow (Crowdin) and the donation file are removed from the repository. The BATS workflow runs only when started manually.
 - The `docs/` site is internal only. Its configuration no longer contains upstream links, donation entries or search credentials.
-- Debian package descriptions use the new name. The `Maintainer`, `Homepage` and copyright fields in `src/deb/*` are unchanged until the owner provides contact data.
+- Debian package descriptions use the new name. The `Maintainer` and `Homepage` fields in `src/deb/*` are unchanged until the owner provides contact data.
