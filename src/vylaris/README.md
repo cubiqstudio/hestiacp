@@ -35,7 +35,22 @@ panel package, checks everything and prints the command for a new panel server. 
 the other scripts: it calls `make-signing-key.sh`, `repo-init.sh`, `repo-publish.sh` (and prints the
 `client-setup.sh` / installer commands).
 
-You need, once:
+### Before you start
+
+Check these once. The wizard asks the first question for you and explains what is missing, but nothing here
+can be done by the script:
+
+- [ ] A **Cloudflare account** (free).
+- [ ] Your **domain is added to Cloudflare and shows status Active** (dashboard: _Add a domain_, plan _Free_;
+      at your domain registrar the nameservers are replaced by the two that Cloudflare shows; this takes
+      minutes to a few hours).
+- [ ] **Zero Trust** is activated in the account (dashboard: _Zero Trust_, free plan; see point 3 below).
+- [ ] A Cloudflare **API token** with the three rights of point 2 below (the script shows them again, with the
+      click path, before it asks for the token).
+- [ ] A Debian 12/13 or Ubuntu 22.04/24.04 machine, **root**, and your own clean clone of this repository
+      on it (point 4 below).
+
+The details:
 
 1. A domain whose DNS is on Cloudflare (a free account is enough). The host name you choose
    (for example `repo.example.com`) must be **dedicated to this repository** (see section 5, the pin
@@ -86,15 +101,57 @@ with the action _Skip_ (for Browser Integrity Check and Bot Fight Mode) for the 
 `/dists/` and `/pool/`. Also allow **outgoing port 7844** (TCP and UDP) on the repository machine:
 `cloudflared` connects to Cloudflare through it.
 
-Then, as root on the repository machine:
+### Quick start
+
+One command. As root on the repository machine (for a private fork the clone needs credentials: a personal
+access token or a read-only deploy key, see point 4 above):
 
 ```bash
-git clone <your repository> && cd <it>        # as root, or as your user and then use sudo below
+git clone <your private fork> && cd <it>      # as root, or as your user and then use sudo below
+sudo bash src/vylaris/setup-repo-host.sh      # or, as root: bash src/vylaris/setup-repo-host.sh
+```
+
+On a terminal, with no option and no saved domain, this starts the **setup wizard**. It shows what the script
+will do and asks, in this order:
+
+1. _Is your domain already managed by Cloudflare (status Active)?_ `y`, `n` or `help`. On `n` (or `help`) it
+   prints the numbered how-to (free account, add the domain with the Free plan, replace the nameservers at the
+   registrar, wait for _Active_, activate Zero Trust), says that the address of the repository (a sub domain
+   such as `repo.example.com`) is created automatically, that the installer cannot work without a domain and
+   that Cloudflare quick tunnels (`trycloudflare.com`) are not suitable because their address changes on every
+   restart, and ends with exit code 0, **before it installs or creates anything**: _Nothing was changed. Run the
+   same command again when the domain is Active._
+2. The **token screen**: a framed box with the click path (_My Profile > API Tokens > Create Token > Create
+   Custom Token_), the three rights (Account / Cloudflare Tunnel / Edit, Zone / DNS / Edit, Zone / Zone / Read),
+   the resources, what the token is needed for later and that it is never written to disk or to the log; then
+   _Press Enter when you have the token_ and the hidden prompt.
+3. _Which address should the repository get?_ (for example `repo.example.com`). A wrong form is explained and
+   asked again, three tries. When the zone of the address is not in the Cloudflare account of the token, or the
+   address is more than one label below the zone, the wizard says what to check and asks again (three tries; the
+   old refusal comes after the third).
+4. Password protected (default, recommended) or public. Not asked when `--public` or `--auth` is given.
+5. A summary and _Start now? [Y/n]_ (`-y` skips this question; `n` ends with exit code 2, nothing changed).
+
+Then the normal steps 1 to 9 run. The wizard uses the terminal only: with no terminal (a pipe, cron, `ssh`
+without `-t`) and no `--domain` the script stops with exit code 1 and _No terminal for questions: run it in a
+terminal or pass --domain <name> (see --help)_; `--no-wizard` forces that on a terminal too. The texts of the
+wizard, the token screen and the short token box are in German when `LC_ALL`, `LC_MESSAGES` or `LANG` starts
+with `de`, otherwise in English; `--lang de|en` decides. Other messages are unchanged. Answers are not
+logged, the token is typed hidden (no echo), never put on a command line, never written anywhere.
+
+A run with no option and a **saved domain** does not ask for the domain again: it resumes. When it has to ask
+for the token, it first prints a short box (`token needs: Account>Cloudflare Tunnel>Edit Zone>DNS>Edit
+Zone>Zone>Read ...`); every installer run that is going to ask for the token at a prompt does, also one with
+options.
+
+### With options (no questions, for scripts and repeated runs)
+
+```bash
 CLOUDFLARE_API_TOKEN=... bash src/vylaris/setup-repo-host.sh --domain repo.example.com
 ```
 
 Better for the shell history: run it without the token and type it into the hidden prompt, or
-`--cf-token-file FILE`. Without `--domain` the script asks. At the end it prints, and saves in
+`--cf-token-file FILE`. Without `--domain` the wizard asks (on a terminal). At the end it prints, and saves in
 `/root/vylarisspace-repo-host/CLIENT-INSTALL.txt` (mode 600), the URL, the **fingerprint of the signing
 key** and the exact commands for
 
@@ -198,7 +255,7 @@ itself when they are missing.
 
 | Option                                     | Meaning                                                                                                                                                                                                      |
 | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--domain NAME`                            | Host name of the repository (default: the saved one, else the script asks)                                                                                                                                   |
+| `--domain NAME`                            | Host name of the repository (default: the saved one, else the wizard asks on a terminal, else exit 1)                                                                                                        |
 | `--cf-token-file FILE`                     | Token from a file (first line); else `CLOUDFLARE_API_TOKEN`; else hidden prompt                                                                                                                              |
 | `--public` / `--auth`                      | No password / password protection (default on; the choice is saved)                                                                                                                                          |
 | `--auth-user NAME`                         | User name of the generated login (default `vylaris-server`)                                                                                                                                                  |
@@ -217,7 +274,9 @@ itself when they are missing.
 | `--print-client-command`                   | Print the commands for new servers again (no changes)                                                                                                                                                        |
 | `--status`                                 | nginx, service, tunnel (needs the token; Enter at the prompt, or an API problem, prints `not checked`), published versions; exit 6 if something is down                                                      |
 | `--uninstall-tunnel` [`--delete-dns`]      | Remove the cloudflared service; with `--delete-dns` also the DNS record (and the tunnel, if this script created it); the token is tried first, a wrong one removes nothing. `--delete-dns` alone is an error |
-| `-y`, `--yes`                              | No confirmation questions                                                                                                                                                                                    |
+| `-y`, `--yes`                              | No confirmation questions (the wizard skips _Start now?_)                                                                                                                                                    |
+| `--no-wizard`                              | Never ask for the domain, even on a terminal: without `--domain` or a saved domain exit 1                                                                                                                    |
+| `--lang de`/`en`                           | Language of the wizard, the token screen and the short token box (default: by `LC_ALL`/`LC_MESSAGES`/`LANG`)                                                                                                 |
 
 Exit codes: 0 done, 1 usage, 2 refused (nothing damaged), 3 this machine cannot do it (not root,
 system, tool, disk), 4 Cloudflare API error (with a hint: wrong token, missing permission, domain not in
@@ -260,7 +319,8 @@ remove `secret-primary-*` and `keys/gnupg-primary` afterwards. The script never 
 
 ### Secrets
 
-- The Cloudflare API token is read once from the file, the environment or the hidden prompt, removed from
+- The Cloudflare API token is read once from the file, the environment or the hidden prompt (the wizard's
+  prompt is the same one: no echo, no log), removed from
   the environment (programs started by the script do not inherit it) and passed to `curl` only as
   configuration on standard input. It is never in a command line, never in a file, never in the log and
   never printed. Tracing (`bash -x`) is switched off. It is not needed after the run (except `--status`
@@ -331,6 +391,8 @@ mock-cloudflare.py   stand-in for the Cloudflare API (Python 3 standard library)
                      (deprecated), plus an "edge" on https that forwards to the tunnel route once a tunnel is
                      connected
 guest.sh             runs inside the container: fresh Ubuntu/Debian with only python3 and openssl added
+pty-drive.py         runs the installer on a pseudo terminal and types the answers (the wizard tests); the token
+                     reaches it in an environment variable, never on a command line
 run.sh               builds the image, copies the checkout in, starts the container, prints PASS/FAIL lines
 Dockerfile
 ```
@@ -351,7 +413,14 @@ with decoys in the mock, an interrupted first run, idempotency, nginx login, sig
 files that are not keys, the checkout rules (other owner, a plain user clone with 775 and a private group, a group
 with other members, world-writable `.git/config`, `.git/hooks`, `src/`), the lock in `/run`, `client-setup.sh`
 and `apt-get install -s hestia`, `--status` (also with a wrong token), `--print-client-command`, `--public` /
-`--auth` and the saved mode, uninstall with a wrong token (nothing torn down) and resume),
+`--auth` and the saved mode, uninstall with a wrong token (nothing torn down) and resume; the setup wizard on a pseudo
+terminal (`pty-drive.py`): `--help` starts with QUICK START and lists the three token rights, no terminal / `--no-wizard`
+without a domain is exit 1 (also when only standard input or only the output is not a terminal) and the pipe is not read, the answers `n` / `help` print the how-to and change nothing
+(no package, no state, no API call), German and English by `LC_ALL`, `LC_MESSAGES`, `LANG` and `--lang`, the token
+screen before the hidden prompt and three tries, three invalid addresses, `Start now? n`, a token from the
+environment, Ctrl+D, the short token box before the prompt of a run with options, an address in no zone asked again
+(three tries, then exit 4 with nothing created at Cloudflare), a complete wizard installation with the same end state
+as a run with options, and the resume without a domain question),
 `b` (`--force-dns` in place and with A + AAAA, a PATCH that fails with 500/403 and deletes nothing, foreign nginx
 site and its single `.bak`, a repository directory that holds only the `repo-init.sh` skeleton, the export under
 `umask 022`, a 2 MB `nginx -T` output, busy port, `nginx -t` rollback, `--skip-tunnel-service` and its headline,
@@ -367,7 +436,7 @@ a full `/var/tmp`; the unit file is checked with the real `systemd-analyze verif
 contacted (profile `cfd` and `build` do use the network: `pkg.cloudflare.com`, npm, Packagist).
 
 Result of the last run of the whole set, after the last change of the script (all with `0 failed`): profile `a`
-451 checks on each of `ubuntu:24.04`, `ubuntu:22.04` and `debian:12`; profile `b` 165 checks on `ubuntu:24.04`;
+695 checks on each of `ubuntu:24.04`, `ubuntu:22.04` and `debian:12`; profile `b` 165 checks on `ubuntu:24.04`;
 profile `cfd` 38 checks on `ubuntu:24.04`; profile `build` 5 checks on `ubuntu:24.04`. Not run: profile `b`, `cfd` and
 `build` on the other images.
 

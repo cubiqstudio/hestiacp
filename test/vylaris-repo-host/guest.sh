@@ -7,6 +7,8 @@
 #            ownership, rate limit, zone depth), full run, idempotency, nginx auth, signature,
 #            CLIENT-INSTALL.txt, password printed once, secrets (log, process list, world-readable files),
 #            client check with client-setup.sh, --status, --print-client-command, --uninstall-tunnel
+#            the setup wizard on a pseudo terminal (pty-drive.py): questions, texts in German and English, refusals
+#            that create nothing, a wrong zone asked again, the same end state as a run with options, resume
 # PROFILE b: --force-dns (in place, backup, A+AAAA), foreign nginx file, big nginx -T output, port conflict,
 #            nginx rollback, --listen-port, --skip-tunnel-service, --public, --staging, several suites,
 #            the build path with a stand-in build script, untracked files, DNS POST that answers 500
@@ -96,6 +98,56 @@ run_script() {
 		bash "$SCRIPT" "$@" > "$OUT/run-$(printf '%02d' "$RUN_N")-$label.out" 2>&1
 	LAST_RC=$?
 	echo "---- run $RUN_N ($label): bash setup-repo-host.sh $* -> exit $LAST_RC"
+}
+
+# Run the installer on a pseudo terminal (pty-drive.py answers the prompts): run_pty LABEL [pty-drive options] -- ARGS.
+# The token (default $GOOD, TOK='' for none) is given to pty-drive in PTY_TOKEN, never on a command line.
+# The output (the terminal as the owner sees it) is saved like the output of run_script.
+STEPS_LEFT=0
+run_pty() {
+	local label=$1 opts=() f cmd=(bash "$SCRIPT")
+	shift
+	while [ $# -gt 0 ] && [ "$1" != -- ]; do
+		opts+=("$1")
+		shift
+	done
+	shift
+	# PTY_PIPE_OUT=1: the output of the installer goes into a pipe (a terminal for input only)
+	if [ "${PTY_PIPE_OUT:-0}" = 1 ]; then
+		cmd=(bash -c 'set -o pipefail; bash "$@" | cat' _ "$SCRIPT")
+	fi
+	RUN_N=$((RUN_N + 1))
+	f="$OUT/run-$(printf '%02d' "$RUN_N")-$label.out"
+	PTY_TOKEN="${TOK-$GOOD}" python3 /test/pty-drive.py --timeout "${PTY_TIMEOUT:-900}" --idle "${PTY_IDLE:-120}" \
+		--env "VYLARIS_CF_API_BASE=${TEST_CF_BASE:-http://127.0.0.1:8787/client/v4}" --env VYLARIS_CF_RETRY_DELAY=1 \
+		--env "VYLARIS_TUNNEL_WAIT=${TUNNEL_WAIT:-30}" --env "VYLARIS_VERIFY_WAIT=${VERIFY_WAIT:-30}" \
+		--unset CLOUDFLARE_API_TOKEN --unset LANG --unset LC_ALL --unset LC_MESSAGES \
+		"${opts[@]}" -- "${cmd[@]}" "$@" > "$f" 2>&1
+	LAST_RC=$(sed -n 's/^PTY_EXIT=//p' "$f" | tail -n1)
+	STEPS_LEFT=$(sed -n 's/^PTY_STEPS_LEFT=//p' "$f" | tail -n1)
+	echo "---- run $RUN_N ($label, on a terminal): bash setup-repo-host.sh $* -> exit $LAST_RC"
+	check_eq "$label: every prompt of the script was answered" "$STEPS_LEFT" 0
+}
+# line number of the first line of the last output that matches (0: none)
+line_of() { last_out | grep -nE -- "$1" | head -n1 | cut -d: -f1 | grep . || echo 0; }
+
+# nothing of the installer exists yet: the wizard (or another refusal) ended before it changed anything
+wz_untouched() { # description
+	check "$1: no state directory, state pointer, repository, key or nginx site" bash -c "test ! -e $STATE && test ! -e $REPO && test ! -e /etc/nginx/conf.d/vylarisspace-repo.conf && test ! -e /etc/vylarisspace-repo-host"
+	check "$1: no package was installed (nginx is not there)" bash -c "! dpkg-query -W -f='\${Status}' nginx 2> /dev/null | grep -q 'install ok installed'"
+	check_eq "$1: no API call (the token went nowhere)" "$(calls '.')" 0
+}
+
+# the end state of an installation that does not depend on ids and the password (to compare two ways of getting there)
+wz_endstate() {
+	echo "tunnels=$(mq "[(t['name'], t['config_src'] if 'config_src' in t else '') for t in d['tunnels'] if not t['deleted_at']]")"
+	echo "dns=$(mq "[(r['type'], r['name'], r['content'].split('.',1)[1], r['proxied']) for r in d['dns'] if r['name']=='$DOMAIN']")"
+	echo "dns-target-is-the-tunnel=$(mq "[r['content'] for r in d['dns'] if r['name']=='$DOMAIN'] == [t['id'] + '.cfargotunnel.com' for t in d['tunnels'] if t['name']=='vylarisspace-repo' and not t['deleted_at']]")"
+	echo "state=$(grep -E '^(DOMAIN|AUTH_MODE|LISTEN_PORT|TUNNEL_NAME|TUNNEL_CREATED|REPO_DIR)=' "$STATE/state.env" | sort | tr '\n' ' ')"
+	echo "nginx=$(sed -e 's/[0-9a-f]\{16,\}//g' /etc/nginx/conf.d/vylarisspace-repo.conf | sha256sum | cut -c1-16)"
+	echo "service=$(test -f /etc/systemd/system/vylarisspace-tunnel.service && echo yes || echo no) running=$(pgrep -f 'sleep 10000[0]' > /dev/null && echo yes || echo no)"
+	echo "published=$(reprepro -b $REPO list "$CODENAME" hestia)"
+	echo "fpr=$(fpr_of "$STATE/keys/out/pubkey.asc")"
 }
 
 # the tunnel and the DNS record of the installer, among the decoys the tests put into the mock
@@ -402,6 +454,192 @@ profile_a() {
 	expect_rc "the lock file cannot be opened (a directory is in the way)" 3
 	out_has "lock: clear message" 'cannot open the lock file /run/vylarisspace-repo-host\.lock'
 	rmdir /run/vylarisspace-repo-host.lock
+
+	banner "A0w setup wizard: --help, languages, refusals (nothing is created: no package, no state, no API call)"
+	mock_reset
+	run_script help --help
+	expect_rc "--help" 0
+	check_eq "--help starts with the QUICK START block" "$(last_out | head -n1 | cut -c1-11)" "QUICK START"
+	out_has "help: the one command" '1\. Command: +sudo bash src/vylaris/setup-repo-host\.sh'
+	out_has "help: what the wizard asks" '2\. The wizard asks'
+	out_has "help: token right Account / Cloudflare Tunnel / Edit" 'Account +Cloudflare Tunnel +Edit'
+	out_has "help: token right Zone / DNS / Edit" 'Zone +DNS +Edit'
+	out_has "help: token right Zone / Zone / Read" 'Zone +Zone +Read'
+	check "help: the table comes before the first option text" test "$(line_of 'Zone +Zone +Read')" -lt "$(line_of '^Usage:')"
+	out_has "help: --no-wizard is listed" '--no-wizard'
+	out_has "help: --lang is listed" '--lang de[|]en'
+	run_script lang-bad --lang fr
+	expect_rc "--lang fr is a usage error" 1
+	run_script lang-missing --lang
+	expect_rc "--lang without a value is a usage error" 1
+
+	run_script noterm-nodomain < /dev/null
+	expect_rc "no terminal and no --domain" 1
+	out_has_lit "no terminal: the message" 'No terminal for questions: run it in a terminal or pass --domain <name> (see --help)'
+	out_has_not "no terminal: no wizard" 'setup wizard|Is your domain'
+	run_script noterm-piped <<< $'y\nsecret-answer'
+	expect_rc "no terminal (answers on a pipe) and no --domain: the pipe is not read" 1
+	out_has_lit "piped stdin: the same message" 'No terminal for questions: run it in a terminal or pass --domain <name> (see --help)'
+	out_has_not "piped stdin: no question was printed" 'Is your domain|Which address'
+	run_pty nowizard-tty -- --no-wizard
+	expect_rc "--no-wizard on a terminal and no --domain" 1
+	out_has_lit "--no-wizard: the message" 'No terminal for questions: run it in a terminal or pass --domain <name> (see --help)'
+	out_has "--no-wizard: says why" 'switched off by --no-wizard'
+	out_has_not "--no-wizard: no wizard" 'setup wizard|Is your domain'
+	wz_untouched "no terminal / --no-wizard"
+	run_pty stdin-null --stdin-null -- --lang en
+	expect_rc "output on a terminal but standard input is not (/dev/null), no --domain" 1
+	out_has_lit "stdin is not a terminal: the message" 'No terminal for questions: run it in a terminal or pass --domain <name> (see --help)'
+	out_has_not "stdin is not a terminal: no wizard" 'setup wizard|Is your domain'
+	PTY_PIPE_OUT=1 run_pty stdout-pipe -- --lang en
+	expect_rc "standard input is a terminal but the output is a pipe, no --domain" 1
+	out_has_lit "stdout is not a terminal: the message" 'No terminal for questions: run it in a terminal or pass --domain <name> (see --help)'
+	out_has_not "stdout is not a terminal: no wizard" 'setup wizard|Is your domain'
+	wz_untouched "stdin or stdout not a terminal"
+
+	# (b) "no": the how-to, exit 0, nothing created
+	run_pty wiz-no --step 'help\] =>n' --
+	expect_rc "wizard, answer n (domain not on Cloudflare yet)" 0
+	out_has "intro: what the script does" '6\. builds the panel package'
+	out_has "intro: what it needs" 'You need: a domain whose DNS is managed by Cloudflare'
+	out_has "intro: safe to stop" 'safe to stop with Ctrl\+C'
+	out_has_lit "the question" 'Is your domain already managed by Cloudflare (status Active)? [y/n/help]'
+	out_has "how-to: free account" '1\. Create a free account'
+	out_has "how-to: Add a domain, Free plan" '2\. Dashboard > Add a domain .* choose the Free plan'
+	out_has "how-to: replace the nameservers at the registrar" '3\. At your domain registrar .* replace the'
+	out_has "how-to: nameservers" 'nameservers Cloudflare shows you'
+	out_has "how-to: wait for Active" '4\. Wait until the Cloudflare dashboard shows the domain as "Active"'
+	out_has "how-to: Zero Trust, marked unverified" '5\. Activate Zero Trust.*'
+	out_has "how-to: the Zero Trust step is marked as unverified" 'Unverified'
+	out_has "the subdomain is created automatically" 'automatically: you do not have to create anything by hand'
+	out_has "no domain: the installer cannot work" 'Without your own domain this installer cannot work'
+	out_has "quick tunnels are not suitable" 'quick tunnels'
+	out_has_lit "the final line" 'Nothing was changed. Run the same command again when the domain is Active.'
+	out_has_not "no token screen after the answer n" 'Create Custom Token|input is hidden'
+	wz_untouched "wizard answer n"
+	run_pty wiz-help --step 'help\] =>help' --step 'help\] =>n' --
+	expect_rc "wizard, help then n" 0
+	check_eq "the how-to is printed for 'help' and again for 'n'" "$(last_out | grep -c '^How to get your domain onto Cloudflare')" 2
+	run_pty wiz-badanswer --step 'help\] =>maybe' --step 'help\] =>n' --
+	expect_rc "wizard, a wrong answer is asked again" 0
+	out_has "wrong answer: the hint" 'Please answer y \(yes\), n \(no\) or help'
+
+	# (f) languages
+	run_pty lang-none --step '(help|hilfe)\] =>n' --
+	out_has "no LANG: English" 'setup wizard'
+	run_pty lang-en --env LANG=en_US.UTF-8 --step '(help|hilfe)\] =>n' --
+	out_has "LANG=en_US.UTF-8: English" 'setup wizard'
+	run_pty lang-de-lang --env LANG=de_DE.UTF-8 --step '(help|hilfe)\] =>n' --
+	expect_rc "LANG=de_DE.UTF-8, answer n" 0
+	out_has "LANG=de_DE.UTF-8: German intro" 'Einrichtungsassistent'
+	out_has "German: the question" 'Ist Ihre Domain schon bei Cloudflare eingerichtet \(Status Active\)\? \[j/n/hilfe\]'
+	out_has "German: nameservers step" 'Nameserver ersetzen'
+	out_has "German: the final line" 'Es wurde nichts geaendert\. Starten Sie denselben Befehl erneut, wenn die Domain "Active" ist'
+	out_has_not "German: no English wizard text" 'setup wizard|You need:'
+	run_pty lang-de-all --env LC_ALL=de_DE.UTF-8 --step '(help|hilfe)\] =>n' --
+	out_has "LC_ALL=de_DE.UTF-8: German" 'Einrichtungsassistent'
+	run_pty lang-de-msg --env LC_MESSAGES=de_AT.UTF-8 --step '(help|hilfe)\] =>n' --
+	out_has "LC_MESSAGES=de_AT.UTF-8: German" 'Einrichtungsassistent'
+	run_pty lang-all-wins --env LANG=de_DE.UTF-8 --env LC_ALL=C --step '(help|hilfe)\] =>n' --
+	out_has "LC_ALL=C beats LANG=de_DE: English" 'setup wizard'
+	run_pty lang-opt-de --step '(help|hilfe)\] =>n' -- --lang de
+	out_has "--lang de without any LANG: German" 'Einrichtungsassistent'
+	run_pty lang-opt-en --env LANG=de_DE.UTF-8 --step '(help|hilfe)\] =>n' -- --lang en
+	out_has "--lang en beats LANG=de_DE: English" 'setup wizard'
+	out_has_not "--lang en: no German" 'Einrichtungsassistent'
+	wz_untouched "language tests"
+
+	# the token screen (full box) in both languages, the hidden prompt after it, three tries
+	run_pty wiz-token-en --step 'help\] =>y' --step 'Press Enter when you have the token\. =>' --step 'input is hidden.*: =>' \
+		--step 'input is hidden.*: =>bad token!' --step 'input is hidden.*: =>' --
+	expect_rc "wizard, no usable token three times" 1
+	out_has "token box: link of the dashboard" 'https://dash\.cloudflare\.com/profile/api-tokens'
+	out_has "token box: Create Custom Token" 'Create Token > "Create Custom Token" \(Get started\)'
+	out_has "token box: the token name" 'Token name: e\.g\. VylarisSpace repo host'
+	out_has "token box: right 1" 'Account +\| Cloudflare Tunnel +\| Edit'
+	out_has "token box: right 2" 'Zone +\| DNS +\| Edit'
+	out_has "token box: right 3" 'Zone +\| Zone +\| Read'
+	out_has "token box: API documentation names" 'Cloudflare Tunnel Write, DNS Write,'
+	out_has "token box: account resources" 'Account Resources: Include > the account that owns the domain'
+	out_has "token box: zone resources" 'Zone Resources: +Include > Specific zone > your domain'
+	out_has "token box: no IP restriction needed, TTL" 'Client IP Address Filtering: not needed'
+	out_has "token box: never written to disk, log or command line" 'never written to disk or to the log, and never put on'
+	out_has "token box: what later runs need the token for" 'again, --status and --uninstall-tunnel --delete-dns'
+	out_has "token box: the running tunnel does not need it" 'does NOT need it'
+	out_has "token box: the tunnel token is in tunnel.env" '/etc/vylarisspace-repo-host/tunnel.env'
+	check "the token box comes before the hidden prompt" test "$(line_of 'Create Custom Token')" -lt "$(line_of 'input is hidden')"
+	check "the box is framed" test "$(last_out | grep -c '^+-----')" -ge 2
+	out_has "empty token: message" 'No token was entered'
+	out_has "wrong token characters: message" 'does not look like a Cloudflare token'
+	out_has "three tries: gives up" 'No usable Cloudflare API token after 3 tries'
+	wz_untouched "token tries"
+	run_pty wiz-token-de --step 'hilfe\] =>j' --step 'Enter, wenn Sie den Token haben\. =>' --step 'input is hidden.*: =>' --step 'input is hidden.*: =>' --step 'input is hidden.*: =>' -- --lang de
+	expect_rc "German wizard, no token three times" 1
+	out_has "German token box: title" 'Sie brauchen einen Cloudflare-API-Token'
+	out_has "German token box: Create Custom Token" 'Create Token > "Create Custom Token" \(Get started\)'
+	out_has "German token box: right 1" 'Account +\| Cloudflare Tunnel +\| Edit'
+	out_has "German token box: right 2" 'Zone +\| DNS +\| Edit'
+	out_has "German token box: right 3" 'Zone +\| Zone +\| Read'
+	out_has "German token box: the running tunnel does not need it" 'braucht ihn NICHT'
+	out_has "German: no token three times" 'Kein brauchbarer Cloudflare-API-Token nach 3 Versuchen'
+	wz_untouched "German token tries"
+
+	# (d) an invalid address: the reason, asked again, gives up after three tries
+	run_pty wiz-baddomain --step 'help\] =>y' --step 'Press Enter when you have the token\. =>' --step 'input is hidden.*: =>@TOKEN@' \
+		--step 'example\.com: =>not a domain' --step 'example\.com: =>localhost' --step 'example\.com: =>-bad-.example.com' --
+	expect_rc "wizard, three invalid addresses" 1
+	check_eq "each wrong address is explained" "$(last_out | grep -c 'is not a valid host name')" 3
+	out_has "invalid address: shows what was typed" '"not a domain" is not a valid host name'
+	out_has "invalid address: gives an example" 'for example repo\.example\.com'
+	out_has "invalid address: gives up after three tries" 'No valid address after 3 tries'
+	out_has_not_lit "the token is not in the terminal output" "$GOOD"
+	wz_untouched "invalid addresses"
+
+	# "Start now? n" after all answers: exit 2, nothing created, and the summary shows the choices
+	run_pty wiz-startno --step 'help\] =>y' --step 'Press Enter when you have the token\. =>' --step 'input is hidden.*: =>@TOKEN@' \
+		--step 'example\.com: =>Repo.Vylaris.Test.' --step 'Enter = 1\]: =>' --step 'Start now\? \[Y/n\] =>n' --
+	expect_rc "wizard, Start now? n" 2
+	out_has_lit "summary: the address (typed with capitals and a dot, shown cleaned)" 'https://repo.vylaris.test'
+	out_has "summary: password protected is the default" 'password protected \(a login is generated\)'
+	out_has "summary: the token is not stored" 'Cloudflare token +entered \(not stored\)'
+	out_has "Start now? n: stopped, nothing changed" 'Stopped at your request\. Nothing was changed'
+	out_has_not_lit "the token is not in the terminal output" "$GOOD"
+	wz_untouched "Start now? n"
+	run_pty wiz-startno-de --step 'hilfe\] =>ja' --step 'Enter, wenn Sie den Token haben\. =>' --step 'input is hidden.*: =>@TOKEN@' \
+		--step 'example\.com: =>repo.vylaris.test' --step 'Enter = 1\]: =>2' --step 'Jetzt starten\? \[J/n\] =>nein' -- --lang de
+	expect_rc "German wizard, Jetzt starten? nein" 2
+	out_has "German summary: public" 'oeffentlich \(kein Passwort\)'
+	out_has "German: stopped" 'Auf Ihren Wunsch abgebrochen'
+	wz_untouched "Jetzt starten? nein"
+	# the token from the environment: no token screen, the questions go on; --public: no access question
+	run_pty wiz-tokenenv --token-env CLOUDFLARE_API_TOKEN --step 'help\] =>y' --step 'example\.com: =>repo.vylaris.test' --step 'Start now\? \[Y/n\] =>n' -- --public
+	expect_rc "wizard with the token in the environment and --public" 2
+	out_has "token from the environment: said so" 'token is taken from the environment or the file'
+	out_has_not "token from the environment: no token screen, no prompt" 'Create Custom Token|input is hidden|Press Enter'
+	out_has_not "--public: the access question is not asked" 'Who may download|Enter = 1'
+	out_has "--public: the summary shows it" 'public \(no password\)'
+	wz_untouched "token from the environment"
+	run_pty wiz-ctrld --step 'help\] =>@EOF@' --
+	expect_rc "Ctrl+D at the first question stops with exit 1" 1
+	wz_untouched "Ctrl+D"
+
+	# (h) the short token box before the token prompt of a run with options
+	run_pty box-flags --step 'input is hidden.*: =>' -- --domain "$DOMAIN"
+	expect_rc "options, no token on a terminal, Enter alone" 1
+	out_has "short box: token needs" 'token needs: Account>Cloudflare Tunnel>Edit  Zone>DNS>Edit  Zone>Zone>Read'
+	out_has "short box: resources" 'Resources: Include the account and the zone of your domain'
+	out_has "short box: where to create it" 'Create: https://dash\.cloudflare\.com/profile/api-tokens > Create Custom Token'
+	out_has "short box: not stored or logged" 'Typed hidden, never stored or logged'
+	check "short box: the box comes before the hidden prompt" test "$(line_of 'token needs:')" -gt 0 -a "$(line_of 'token needs:')" -lt "$(line_of 'input is hidden')"
+	out_has_not "a run with --domain does not start the wizard" 'setup wizard|Is your domain'
+	out_has "and without a token it still stops with the old message" 'token is missing'
+	run_pty box-flags-de --step 'input is hidden.*: =>' -- --domain "$DOMAIN" --lang de
+	out_has "short box in German" 'Token braucht: Account>Cloudflare Tunnel>Edit'
+	wz_untouched "short box"
+	TOK='' run_script no-token-noterm --domain "$DOMAIN" < /dev/null
+	expect_rc "options, no token and no terminal" 1
+	out_has_not "no terminal: no box (nothing is asked there)" 'token needs'
+	check_eq "the token never reached any server" "$(calls '.')" 0
 
 	banner "A1 error cases (each must stop with a clear message and leave nothing half done)"
 	nogood() { # no state, no keys, no nginx site, no repo, no tunnel/dns in the mock
@@ -1040,6 +1278,83 @@ profile_a() {
 	out_has_not "and no 'is running' claim" 'repository host is running'
 	check_eq "the cloudflared run command is printed in step 6 and repeated in the summary" "$(last_out | grep -c 'docker run -d --name vylarisspace-tunnel')" 2
 	out_has "the summary says that https://DOMAIN does not answer before the tunnel runs" 'does not answer yet. Start cloudflared'
+
+	banner "A12 the wizard installs: an address in no zone is asked again, the same end state as a run with options, resume"
+	local wzopts=(--cloudflared-deb /tmp/cloudflared-stub.deb --deb "$DEB_B") wz_a wz_b tposts dposts
+	run_script wz-prep --uninstall-tunnel --delete-dns --yes
+	expect_rc "start of the wizard tests: domain, DNS record and tunnel removed (the key and repository stay)" 0
+	check "no domain in the state" test -z "$(state_get DOMAIN)"
+	# (c) three addresses in no zone: asked again each time, then the old message (exit 4), nothing created at Cloudflare
+	tposts=$(calls '^POST .*/cfd_tunnel$')
+	dposts=$(calls '^POST .*/dns_records')
+	run_pty wiz-zone-giveup --step 'help\] =>y' --step 'Press Enter when you have the token\. =>' --step 'input is hidden.*: =>@TOKEN@' \
+		--step 'example\.com: =>repo.other.test' --step 'Enter = 1\]: =>' --step 'Start now\? \[Y/n\] =>' \
+		--step '(?s)Please enter the address again\..*example\.com: =>repo.nope.test' \
+		--step '(?s)Please enter the address again\..*example\.com: =>repo.zzz.test' -- "${wzopts[@]}"
+	expect_rc "wizard, three addresses that are in no Cloudflare zone" 4
+	check_eq "each one is explained" "$(last_out | grep -c 'was not found in your Cloudflare account')" 3
+	out_has "the explanation lists what to check" 'The domain shows status "Active" in the Cloudflare dashboard'
+	out_has "and says that nothing was created yet" 'Nothing has been created yet\. Please enter the address again'
+	out_has "after the third: the usual refusal" 'is not in this Cloudflare account'
+	check_eq "no tunnel was created at Cloudflare" "$(calls '^POST .*/cfd_tunnel$')" "$tposts"
+	check_eq "no DNS record was created" "$(calls '^POST .*/dns_records')" "$dposts"
+	check "the state has no domain" test -z "$(state_get DOMAIN)"
+	out_has_not_lit "the token is not in the terminal output" "$GOOD"
+	# (c) an invalid address, a wrong zone, then the right one (and the public choice) -> a complete installation
+	run_pty wiz-zone-retry --step 'help\] =>y' --step 'Press Enter when you have the token\. =>' --step 'input is hidden.*: =>@TOKEN@' \
+		--step 'example\.com: =>localhost' --step 'example\.com: =>repo.other.test' --step 'Enter = 1\]: =>2' --step 'Start now\? \[Y/n\] =>y' \
+		--step '(?s)Please enter the address again\..*example\.com: =>'"$DOMAIN" -- "${wzopts[@]}"
+	expect_rc "wizard: invalid address, address in no zone, then the right address" 0
+	check_eq "the invalid address was explained once" "$(last_out | grep -c 'is not a valid host name')" 1
+	check_eq "the address in no zone was explained once" "$(last_out | grep -c 'was not found in your Cloudflare account')" 1
+	out_has "the new address is shown" "Address now: https://$DOMAIN"
+	out_has_not "the wizard does not ask 'Continue?' again" 'Continue\?'
+	out_has "installed: public check passed" 'public check passed'
+	out_has "installed: the headline" 'FERTIG / DONE'
+	check_eq "state: domain" "$(state_get DOMAIN)" "$DOMAIN"
+	check_eq "state: the public choice of the wizard" "$(state_get AUTH_MODE)" public
+	check "nginx: no password for a public repository" bash -c "! grep -q 'auth_basic \"' /etc/nginx/conf.d/vylarisspace-repo.conf"
+	check_eq "one tunnel and one DNS record at Cloudflare" "$(mq "(len($OT), len($OD))")" "(1, 1)"
+	out_has_not_lit "the token is not in the terminal output" "$GOOD"
+	# (a) the plain way: y, token, address, default access, start -> the same end state as a run with options
+	run_script wz-prep2 --uninstall-tunnel --delete-dns --yes
+	expect_rc "removed again" 0
+	run_pty wiz-full --step 'help\] =>y' --step 'Press Enter when you have the token\. =>' --step 'input is hidden.*: =>@TOKEN@' \
+		--step 'example\.com: =>'"$DOMAIN" --step 'Enter = 1\]: =>' --step 'Start now\? \[Y/n\] =>' -- "${wzopts[@]}"
+	expect_rc "wizard: y, token, address, default access, start" 0
+	out_has "wizard run: summary of the choices" 'password protected \(a login is generated\)'
+	out_has "wizard run: the tunnel was created" 'tunnel created'
+	out_has "wizard run: the DNS record was created" 'DNS record created'
+	out_has "wizard run: public check passed" 'public check passed'
+	out_has_not_lit "the token is not in the terminal output (hidden prompt, no echo)" "$GOOD"
+	check_eq "state: password protected again" "$(state_get AUTH_MODE)" auth
+	check "nginx: password protection is back" grep -q 'auth_basic "' /etc/nginx/conf.d/vylarisspace-repo.conf
+	check "the log has the wizard note but no token" bash -c "grep -q 'wizard: answers taken' $LOGF && ! grep -qF '$GOOD' $LOGF"
+	wz_a=$(wz_endstate)
+	run_script wz-prep3 --uninstall-tunnel --delete-dns --yes
+	expect_rc "removed again, for the run with options" 0
+	run_script wz-flags --domain "$DOMAIN" --auth "${wzopts[@]}"
+	expect_rc "the same installation with options" 0
+	wz_b=$(wz_endstate)
+	echo "$wz_a" | sed 's/^/    | /'
+	check_eq "the wizard run and the run with options end in the same state (tunnel, DNS, state, nginx, service, package, key)" "$wz_a" "$wz_b"
+	if [[ $wz_a == *'dns-target-is-the-tunnel=True'* && $wz_a == *'service=yes running=yes'* && $wz_a == *hestia* ]]; then
+		pass "the end state is complete (a CNAME to the tunnel, a running service, a package)"
+	else
+		fail "the end state is not complete"
+	fi
+	# (i) resume: a run with no option does not ask for the domain again (on a terminal: the short token box, then the prompt)
+	run_pty wiz-resume --step 'input is hidden.*: =>@TOKEN@' -- "${wzopts[@]}"
+	expect_rc "second run with no domain option on a terminal" 0
+	out_has_not "resume: no wizard, no question about the domain" 'setup wizard|Is your domain|Which address|Press Enter when'
+	out_has "resume: the short token box is shown" 'token needs:'
+	check "resume: the box comes before the hidden prompt" test "$(line_of 'token needs:')" -gt 0 -a "$(line_of 'token needs:')" -lt "$(line_of 'input is hidden')"
+	out_has "resume: the saved domain is used" "domain: $DOMAIN"
+	out_has "resume: skipped what is done" 'tunnel exists'
+	check_eq "resume: nothing changed" "$(wz_endstate)" "$wz_b"
+	out_has_not_lit "resume: the token is not in the terminal output" "$GOOD"
+	banner "A12b secrets after the wizard runs (terminal output, log, process list, files)"
+	scan_secrets
 }
 
 # ================================================================================================

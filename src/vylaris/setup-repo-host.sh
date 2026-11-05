@@ -1,4 +1,28 @@
 #!/usr/bin/env bash
+# QUICK START - the whole setup is ONE command, run as root inside your clone of this repository:
+#
+#   1. Command:         sudo bash src/vylaris/setup-repo-host.sh
+#   2. The wizard asks: is your domain already Active in Cloudflare (if not, it explains how to get
+#                       there and stops without changing anything) - then it shows what the Cloudflare
+#                       API token needs and asks for it (typed hidden) - the address of the repository
+#                       (for example repo.example.com) - password protected or public - Start now?
+#   3. The Cloudflare API token needs exactly these rights (dashboard: My Profile > API Tokens >
+#      Create Token > Create Custom Token; the dashboard says Edit/Read, the API documentation
+#      says Write/Read):
+#
+#        Scope     Resource            Permission    API documentation name
+#        Account   Cloudflare Tunnel   Edit          Cloudflare Tunnel Write
+#        Zone      DNS                 Edit          DNS Write
+#        Zone      Zone                Read          Zone Read
+#
+#      Account Resources: Include > the account that owns the domain. Zone Resources: Include >
+#      Specific zone > your domain (or all zones). IP filtering is not needed.
+#      The token is needed while the script runs, and later for runs of the installer again,
+#      --status and --uninstall-tunnel --delete-dns. The running tunnel does NOT need it (it uses
+#      its own tunnel token in /etc/vylarisspace-repo-host/tunnel.env): delete the API token in the
+#      dashboard when you are done. It is never written to disk or to the log and never put on a
+#      command line.
+#
 # setup-repo-host.sh - VylarisSpace repository host installer
 #
 # ONE script that turns a fresh Debian or Ubuntu machine into the VylarisSpace apt repository and
@@ -8,11 +32,17 @@
 # Run it as root, from a git checkout of this repository (the script lives in it). Building the
 # package runs programs of the checkout as root: use your own clean clone, not a shared directory.
 #
+#   sudo bash src/vylaris/setup-repo-host.sh
+#
+# With no option on a terminal it starts the setup wizard (questions in German when LANG starts
+# with de, else English; --lang de|en). For scripts and repeated runs, give the answers as options
+# (nothing is asked then, except the token when none is given):
+#
 #   CLOUDFLARE_API_TOKEN=... bash src/vylaris/setup-repo-host.sh --domain repo.example.com
 #
-# or just  bash src/vylaris/setup-repo-host.sh  and answer the questions (the token is typed
-# hidden). Running it again is always safe: it resumes, skips what is done, and never creates a
-# second signing key or a second tunnel and never changes a password.
+# Running it again is always safe: it resumes, skips what is done, and never creates a second
+# signing key or a second tunnel and never changes a password. A run with no option and a saved
+# domain does not ask for the domain again.
 #
 # What it does (each step says what it did or skipped):
 #   1. checks the system, installs the packages it needs, makes the checks that can refuse the run (the
@@ -35,7 +65,8 @@
 # Main options:
 #   --domain NAME          host name of the repository, for example repo.example.com. It must be
 #                          dedicated to this repository and its DNS zone must be on Cloudflare.
-#                          Without it: the value of the last run, else the script asks.
+#                          Without it: the value of the last run, else (on a terminal) the wizard
+#                          asks; without a terminal the run stops with exit code 1.
 #   --cf-token-file FILE   file with the Cloudflare API token (first line). Otherwise the
 #                          environment variable CLOUDFLARE_API_TOKEN, otherwise the script asks
 #                          (hidden input). The token is never put on a command line, never printed
@@ -89,7 +120,11 @@
 #                          when this script created it (otherwise it is left alone).
 #   --delete-dns           only together with --uninstall-tunnel (otherwise exit 1); needs the token.
 #                          The token is tried first: a wrong token stops before anything is removed.
-#   -y, --yes              do not ask for confirmation
+#   -y, --yes              do not ask for confirmation (the wizard then skips "Start now?")
+#   --no-wizard            never ask for the domain and the other answers, even on a terminal: without
+#                          --domain (or a saved domain) the run stops with exit code 1
+#   --lang de|en           language of the wizard and of the token box (default: German when
+#                          LC_ALL, LC_MESSAGES or LANG starts with de, else English)
 #   -h, --help             this text
 #
 # Cloudflare API token - create it once in the Cloudflare dashboard:
@@ -200,6 +235,10 @@ SHOW_LOGIN_OPT=0
 MODE='install'
 DELETE_DNS=0
 ASSUME_YES=0
+NO_WIZARD=0
+LANG_OPT=''
+UI_LANG=en
+WIZARD=0
 
 CF_TOKEN=''
 # The token of the environment is taken over and removed from the environment at once, so no program
@@ -500,6 +539,21 @@ parse_args() {
 			-y | --yes)
 				ASSUME_YES=1
 				shift
+				;;
+			--no-wizard)
+				NO_WIZARD=1
+				shift
+				;;
+			--lang)
+				need_value "$1" $#
+				case "$2" in
+					de | en) LANG_OPT=$2 ;;
+					*)
+						printf '%s: --lang must be de or en\n' "$PROG" >&2
+						exit 1
+						;;
+				esac
+				shift 2
 				;;
 			-h | --help)
 				usage
@@ -839,11 +893,16 @@ read_token() {
 	fi
 	CF_TOKEN_ENV=''
 	[ -n "$t" ] || return 1
-	[[ $t =~ ^[A-Za-z0-9_.~+/=-]{16,512}$ ]] || die "the Cloudflare API token looks wrong (unexpected characters or length). Paste only the token." 1
+	if ! [[ $t =~ ^[A-Za-z0-9_.~+/=-]{16,512}$ ]]; then
+		# (the wizard asks again; everything else stops)
+		[ "$WIZARD" -eq 0 ] || return 2
+		die "the Cloudflare API token looks wrong (unexpected characters or length). Paste only the token." 1
+	fi
 	CF_TOKEN=$t
 }
 
 need_token() {
+	[ -z "$CF_TOKEN" ] || return 0
 	read_token || die "the Cloudflare API token is missing. Set CLOUDFLARE_API_TOKEN, use --cf-token-file FILE, or run in a terminal to be asked." 1
 }
 
@@ -995,7 +1054,11 @@ cf_tunnel_inspect() { # [created-by-us]: skip the emptiness check (we created it
 
 cf_preflight() {
 	local out=''
-	cf_find_zone
+	if [ "$WIZARD" -eq 1 ]; then
+		wz_zone_loop
+	else
+		cf_find_zone
+	fi
 	info "zone: $ZONE_NAME (found with this token, account id known)"
 	check_domain_depth
 	cf_tunnel_inspect
@@ -2037,6 +2100,10 @@ Geht der Schluessel verloren, muessen ALLE Server neu eingerichtet werden.
 BACK UP $STATE_DIR to another machine. If the key is lost, EVERY server must be set up again.
 Der Cloudflare-API-Token wurde nicht gespeichert; Sie koennen ihn im Dashboard loeschen.
 The Cloudflare API token was not saved; you may delete it in the dashboard.
+Der laufende Tunnel braucht ihn nicht (er hat seinen eigenen Token in $TUNNEL_ENV). Noetig ist er nur
+fuer weitere Laeufe dieses Skripts, --status und --uninstall-tunnel --delete-dns.
+The running tunnel does not need it (it has its own token in $TUNNEL_ENV). It is only needed for
+runs of this script again, --status and --uninstall-tunnel --delete-dns.
 
 SUMMARY_EOF
 	client_text "$kind"
@@ -2177,14 +2244,15 @@ validate_inputs() {
 	fi
 }
 
+# (the questions are asked by the wizard, before this: reaching this point without a domain means that
+# nobody can be asked)
 need_domain() {
-	local d=''
 	if [ -z "$DOMAIN" ]; then
-		if [ -t 0 ]; then
-			read -r -p "Domain for the repository (for example repo.example.com): " d
-			DOMAIN=$d
+		if [ "$NO_WIZARD" -eq 1 ]; then
+			die "No terminal for questions: run it in a terminal or pass --domain <name> (see --help)
+  (the question wizard is switched off by --no-wizard)" 1
 		fi
-		[ -n "$DOMAIN" ] || die "the domain is missing. Use --domain repo.example.com" 1
+		die "No terminal for questions: run it in a terminal or pass --domain <name> (see --help)" 1
 	fi
 	normalize_domain
 }
@@ -2226,18 +2294,557 @@ setup_tmp() {
 }
 
 # ---------------------------------------------------------------------------------------------
+# the setup wizard: German or English texts, questions only on a terminal
+# ---------------------------------------------------------------------------------------------
+# Answers are never logged. The wizard reads from the terminal only (it runs only when stdin and
+# stdout are a terminal). Everything it prints goes to the terminal, not to the log.
+detect_lang() {
+	local l=$LANG_OPT
+	if [ -z "$l" ]; then
+		l=${LC_ALL:-}
+		[ -n "$l" ] || l=${LC_MESSAGES:-}
+		[ -n "$l" ] || l=${LANG:-}
+	fi
+	case "$l" in
+		de | de_* | de.* | de@*) UI_LANG=de ;;
+		*) UI_LANG=en ;;
+	esac
+}
+
+# Questions are asked when nobody gave a domain (option or saved), on a terminal.
+wizard_wanted() {
+	[ "$MODE" = install ] && [ "$NO_WIZARD" -eq 0 ] && [ -z "$DOMAIN" ] && is_tty
+}
+
+# True when this run is going to ask for the token at a prompt (no file, no environment variable).
+token_will_be_asked() {
+	[ "$WIZARD" -eq 0 ] && [ -z "$CF_TOKEN" ] && [ -z "$CF_TOKEN_FILE" ] && [ -z "$CF_TOKEN_ENV" ] && [ -t 0 ]
+}
+
+wsay() { printf '%s\n' "$*"; }
+
+# A frame around the lines on standard input.
+box() {
+	local rule='+------------------------------------------------------------------------------+'
+	printf '%s\n' "$rule"
+	sed 's/^/| /; s/ *$//'
+	printf '%s\n' "$rule"
+}
+
+# One line texts (@D@ is the address, @Z@ the zone).
+t() {
+	local m
+	if [ "$UI_LANG" = de ]; then
+		case "$1" in
+			q_cf) m='Ist Ihre Domain schon bei Cloudflare eingerichtet (Status Active)? [j/n/hilfe] ' ;;
+			bad_answer) m='Bitte antworten Sie mit j (ja), n (nein) oder hilfe.' ;;
+			p_token_enter) m='Druecken Sie Enter, wenn Sie den Token haben. ' ;;
+			token_empty) m='Es wurde kein Token eingegeben.' ;;
+			token_bad) m='Das sieht nicht wie ein Cloudflare-Token aus (unerwartete Zeichen oder Laenge). Fuegen Sie nur den Token ein.' ;;
+			token_gave_up) m='Kein brauchbarer Cloudflare-API-Token nach 3 Versuchen. Es wurde nichts geaendert. Starten Sie den Befehl erneut.' ;;
+			token_given) m='Der Cloudflare-API-Token wird aus der Umgebung oder der Datei gelesen (--cf-token-file).' ;;
+			p_domain) m='Unter welcher Adresse soll die Paket-Quelle erreichbar sein? z.B. repo.example.com: ' ;;
+			r_empty) m='Es wurde nichts eingegeben.' ;;
+			r_invalid) m='"@D@" ist kein gueltiger Rechnername.'$'\n''Erlaubt: Buchstaben, Ziffern und Bindestriche, durch Punkte getrennt, z.B. repo.example.com'$'\n''(ohne Leerzeichen, ohne https://).' ;;
+			domain_gave_up) m='Nach 3 Versuchen keine gueltige Adresse. Es wurde nichts geaendert. Starten Sie den Befehl erneut.' ;;
+			p_access) m='Ihre Wahl [1/2, Enter = 1]: ' ;;
+			bad_access) m='Bitte 1 oder 2 eingeben.' ;;
+			access_gave_up) m='Keine gueltige Wahl nach 3 Versuchen. Es wurde nichts geaendert. Starten Sie den Befehl erneut.' ;;
+			q_start) m='Jetzt starten? [J/n] ' ;;
+			stopped) m='Abgebrochen. Es wurde nichts geaendert.' ;;
+			stopped_nothing) m='Auf Ihren Wunsch abgebrochen. Es wurde nichts geaendert.' ;;
+			cf_not_ready) m='Es wurde nichts geaendert. Starten Sie denselben Befehl erneut, wenn die Domain "Active" ist.' ;;
+			tb_1) m='Token braucht: Account>Cloudflare Tunnel>Edit  Zone>DNS>Edit  Zone>Zone>Read' ;;
+			tb_2) m='Resources: Include das Konto und die Zone Ihrer Domain (oder alle Zonen)' ;;
+			tb_3) m='Anlegen: https://dash.cloudflare.com/profile/api-tokens > Create Custom Token' ;;
+			tb_4) m='Wird versteckt eingegeben, nie gespeichert oder geloggt. Anleitung: --help' ;;
+			sum_title) m='Zusammenfassung - bitte pruefen:' ;;
+			sum_addr) m='Adresse der Paket-Quelle' ;;
+			sum_access) m='Zugriff' ;;
+			sum_auth) m='nur mit Passwort (Zugang wird erzeugt)' ;;
+			sum_public) m='oeffentlich (kein Passwort)' ;;
+			sum_token) m='Cloudflare-Token' ;;
+			sum_token_ok) m='eingegeben (wird nicht gespeichert)' ;;
+			sum_what) m='Ablauf' ;;
+			sum_what_v) m='Pakete, Schluessel, Repository, nginx, Tunnel, DNS, Paket bauen' ;;
+			addr_now) m='Adresse jetzt: https://@D@' ;;
+			*) m="[$1]" ;;
+		esac
+	else
+		case "$1" in
+			q_cf) m='Is your domain already managed by Cloudflare (status Active)? [y/n/help] ' ;;
+			bad_answer) m='Please answer y (yes), n (no) or help.' ;;
+			p_token_enter) m='Press Enter when you have the token. ' ;;
+			token_empty) m='No token was entered.' ;;
+			token_bad) m='That does not look like a Cloudflare token (unexpected characters or length). Paste only the token.' ;;
+			token_gave_up) m='No usable Cloudflare API token after 3 tries. Nothing was changed. Run the command again.' ;;
+			token_given) m='The Cloudflare API token is taken from the environment or the file (--cf-token-file).' ;;
+			p_domain) m='Which address should the repository get? e.g. repo.example.com: ' ;;
+			r_empty) m='Nothing was entered.' ;;
+			r_invalid) m='"@D@" is not a valid host name.'$'\n''Allowed: letters, digits and hyphens, separated by dots, for example repo.example.com'$'\n''(no spaces, no https://).' ;;
+			domain_gave_up) m='No valid address after 3 tries. Nothing was changed. Run the command again.' ;;
+			p_access) m='Your choice [1/2, Enter = 1]: ' ;;
+			bad_access) m='Please enter 1 or 2.' ;;
+			access_gave_up) m='No valid choice after 3 tries. Nothing was changed. Run the command again.' ;;
+			q_start) m='Start now? [Y/n] ' ;;
+			stopped) m='Stopped. Nothing was changed.' ;;
+			stopped_nothing) m='Stopped at your request. Nothing was changed.' ;;
+			cf_not_ready) m='Nothing was changed. Run the same command again when the domain is Active.' ;;
+			tb_1) m='token needs: Account>Cloudflare Tunnel>Edit  Zone>DNS>Edit  Zone>Zone>Read' ;;
+			tb_2) m='Resources: Include the account and the zone of your domain (or all zones)' ;;
+			tb_3) m='Create: https://dash.cloudflare.com/profile/api-tokens > Create Custom Token' ;;
+			tb_4) m='Typed hidden, never stored or logged. Full instructions: --help' ;;
+			sum_title) m='Summary - please check:' ;;
+			sum_addr) m='Repository address' ;;
+			sum_access) m='Access' ;;
+			sum_auth) m='password protected (a login is generated)' ;;
+			sum_public) m='public (no password)' ;;
+			sum_token) m='Cloudflare token' ;;
+			sum_token_ok) m='entered (not stored)' ;;
+			sum_what) m='What happens' ;;
+			sum_what_v) m='packages, key, repository, nginx, tunnel, DNS, build the package' ;;
+			addr_now) m='Address now: https://@D@' ;;
+			*) m="[$1]" ;;
+		esac
+	fi
+	m=${m//@D@/"$DOMAIN"}
+	m=${m//@Z@/"$ZONE_NAME"}
+	printf '%s' "$m"
+}
+
+wz_intro() {
+	if [ "$UI_LANG" = de ]; then
+		cat << 'WZ_EOF'
+VylarisSpace Paket-Quelle - Einrichtungsassistent
+=================================================
+Dieses Skript macht aus diesem Rechner Ihre eigene Paket-Quelle (apt):
+  1. installiert die benoetigten Programme (nginx, reprepro, ...)
+  2. erzeugt einen Signaturschluessel und das Repository
+  3. richtet den Webserver ein (nur lokal, mit Passwortschutz)
+  4. legt bei Cloudflare einen Tunnel und den DNS-Eintrag an
+  5. installiert den Tunnel-Dienst (cloudflared)
+  6. baut das Panel-Paket, veroeffentlicht es und prueft alles
+Sie brauchen: eine Domain, deren DNS bei Cloudflare verwaltet wird, einen
+Cloudflare-API-Token (die naechsten Bildschirme erklaeren ihn) und etwa
+10 Minuten.
+Sie koennen jederzeit mit Strg+C abbrechen und denselben Befehl spaeter
+erneut starten: er macht dort weiter, wo er aufgehoert hat, und erzeugt nie
+einen zweiten Schluessel oder Tunnel.
+WZ_EOF
+	else
+		cat << 'WZ_EOF'
+VylarisSpace repository host - setup wizard
+===========================================
+This script turns this machine into your own package repository (apt):
+  1. installs the programs it needs (nginx, reprepro, ...)
+  2. creates a signing key and the repository
+  3. sets up the web server (local only, password protected)
+  4. creates a Cloudflare tunnel and the DNS entry for your address
+  5. installs the tunnel service (cloudflared)
+  6. builds the panel package, publishes it and checks everything
+You need: a domain whose DNS is managed by Cloudflare, a Cloudflare API token
+(the next screens explain it) and about 10 minutes.
+It is safe to stop with Ctrl+C at any time and to run the same command again:
+it continues where it stopped and never creates a second key or tunnel.
+WZ_EOF
+	fi
+}
+
+# How to get a domain onto Cloudflare (printed for the answer "help" and for "no").
+wz_howto() {
+	if [ "$UI_LANG" = de ]; then
+		cat << 'WZ_EOF'
+So kommt Ihre Domain (kostenlos) zu Cloudflare:
+  1. Kostenloses Konto anlegen: https://dash.cloudflare.com/sign-up
+  2. Dashboard > Domain hinzufuegen (Add a domain) > Domain eingeben >
+     Tarif "Free" waehlen.
+  3. Beim Domain-Anbieter (Registrar) die Nameserver durch die zwei
+     Nameserver ersetzen, die Cloudflare anzeigt.
+  4. Warten, bis das Cloudflare-Dashboard die Domain als "Active" zeigt
+     (meist Minuten, manchmal einige Stunden).
+  5. Zero Trust aktivieren: Dashboard > Zero Trust, den kostenlosen Tarif
+     waehlen. Es kann eine einmalige Einrichtung verlangen. (Nicht geprueft:
+     das wurde nicht an einem echten Konto ausprobiert, und die Texte im
+     Dashboard aendern sich.)
+Die Adresse der Paket-Quelle (z.B. repo.<ihre Domain>) wird automatisch
+angelegt: Sie muessen nichts von Hand anlegen.
+WZ_EOF
+	else
+		cat << 'WZ_EOF'
+How to get your domain onto Cloudflare (free):
+  1. Create a free account: https://dash.cloudflare.com/sign-up
+  2. Dashboard > Add a domain > enter your domain > choose the Free plan.
+  3. At your domain registrar (where you bought the domain) replace the
+     nameservers with the two nameservers Cloudflare shows you.
+  4. Wait until the Cloudflare dashboard shows the domain as "Active"
+     (usually a few minutes, sometimes a few hours).
+  5. Activate Zero Trust: Dashboard > Zero Trust, pick the free plan. It may
+     ask for a one-time setup. (Unverified: this was not tried against a real
+     account, and the dashboard wording changes.)
+The address of the repository (for example repo.<your domain>) is created
+automatically: you do not have to create anything by hand.
+WZ_EOF
+	fi
+}
+
+# The answer "no": without a domain this installer cannot work.
+wz_no_domain() {
+	if [ "$UI_LANG" = de ]; then
+		cat << 'WZ_EOF'
+
+Ohne eigene Domain kann dieses Skript nicht arbeiten. Cloudflare-"Quick
+Tunnels" (trycloudflare.com) sind nicht geeignet: ihre Adresse aendert sich bei
+jedem Neustart, auf sie kann sich kein Server verlassen.
+WZ_EOF
+	else
+		cat << 'WZ_EOF'
+
+Without your own domain this installer cannot work. Cloudflare "quick tunnels"
+(trycloudflare.com) are not suitable: their address changes on every restart,
+so no server could rely on it.
+WZ_EOF
+	fi
+}
+
+# The full token screen: shown before the token prompt of the wizard.
+wz_token_box() {
+	if [ "$UI_LANG" = de ]; then
+		box << 'WZ_EOF'
+Sie brauchen einen Cloudflare-API-Token. Anlegen (etwa 2 Minuten):
+
+ 1. Oeffnen: https://dash.cloudflare.com/profile/api-tokens
+ 2. Create Token > "Create Custom Token" (Get started)
+ 3. Token name: z.B. VylarisSpace repo host
+ 4. Permissions (drei Zeilen):
+        Account | Cloudflare Tunnel | Edit
+        Zone    | DNS               | Edit
+        Zone    | Zone              | Read
+    (in der API-Dokumentation heissen sie: Cloudflare Tunnel Write,
+     DNS Write, Zone Read)
+ 5. Account Resources: Include > das Konto, dem die Domain gehoert
+    Zone Resources:    Include > Specific zone > Ihre Domain
+                       (oder: All zones)
+ 6. Client IP Address Filtering: nicht noetig (oder die IP dieses Servers).
+    TTL: darf kurz sein, oder ein Enddatum setzen.
+ 7. Continue to summary > Create Token > Token kopieren (wird nur einmal
+    angezeigt).
+
+Zum Token:
+ - Er wird versteckt eingegeben, nie auf die Platte oder ins Log geschrieben
+   und nie in eine Befehlszeile gesetzt.
+ - Gebraucht wird er, solange dieses Skript laeuft, und spaeter fuer weitere
+   Laeufe des Skripts, --status und --uninstall-tunnel --delete-dns. Der
+   laufende Tunnel braucht ihn NICHT: er hat seinen eigenen Token in
+   /etc/vylarisspace-repo-host/tunnel.env. Nach der Einrichtung koennen Sie
+   den API-Token im Dashboard loeschen.
+WZ_EOF
+	else
+		box << 'WZ_EOF'
+You need a Cloudflare API token. Create it now (about 2 minutes):
+
+ 1. Open: https://dash.cloudflare.com/profile/api-tokens
+ 2. Create Token > "Create Custom Token" (Get started)
+ 3. Token name: e.g. VylarisSpace repo host
+ 4. Permissions (three rows):
+        Account | Cloudflare Tunnel | Edit
+        Zone    | DNS               | Edit
+        Zone    | Zone              | Read
+    (the API documentation calls them: Cloudflare Tunnel Write, DNS Write,
+     Zone Read)
+ 5. Account Resources: Include > the account that owns the domain
+    Zone Resources:    Include > Specific zone > your domain
+                       (or: All zones)
+ 6. Client IP Address Filtering: not needed (or the IP of this server).
+    TTL: may be short, or set an end date.
+ 7. Continue to summary > Create Token > copy the token (it is shown only
+    once).
+
+About the token:
+ - It is typed hidden, never written to disk or to the log, and never put on
+   a command line.
+ - It is needed while this script runs, and later for runs of the script
+   again, --status and --uninstall-tunnel --delete-dns. The running tunnel
+   does NOT need it: it has its own token in
+   /etc/vylarisspace-repo-host/tunnel.env. After the setup you may delete the
+   API token in the dashboard.
+WZ_EOF
+	fi
+}
+
+# The short form (4 lines), before every token prompt of an installer run that is not the wizard.
+token_box_compact() {
+	{
+		t tb_1
+		printf '\n'
+		t tb_2
+		printf '\n'
+		t tb_3
+		printf '\n'
+		t tb_4
+		printf '\n'
+	} | box
+}
+
+# A terminal question: wz_read VARIABLE PROMPT. The end of the input (Ctrl+D) stops the run.
+wz_read() {
+	local _a=''
+	if ! read -r -p "$2" _a; then
+		printf '\n'
+		die "$(t stopped)" 1
+	fi
+	_a=${_a#"${_a%%[![:space:]]*}"}
+	_a=${_a%"${_a##*[![:space:]]}"}
+	printf -v "$1" '%s' "$_a"
+}
+
+# Lower case, no scheme, no path, no trailing dot.
+wz_clean_domain() {
+	local d
+	d=$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]')
+	d=${d#http://}
+	d=${d#https://}
+	d=${d%%/*}
+	printf '%s' "${d%.}"
+}
+
+# Sets DOMAIN. Three tries, each wrong one says why.
+wz_ask_domain() {
+	local n=0 a=''
+	while [ "$n" -lt 3 ]; do
+		n=$((n + 1))
+		wz_read a "$(t p_domain)"
+		a=$(wz_clean_domain "$a")
+		if [ -z "$a" ]; then
+			wsay "  $(t r_empty)"
+		elif ! valid_domain "$a"; then
+			DOMAIN=$a t r_invalid | sed 's/^/  /'
+			printf '\n'
+		else
+			DOMAIN=$a
+			return 0
+		fi
+	done
+	die "$(t domain_gave_up)" 1
+}
+
+# The Cloudflare token: the full token screen, then the hidden prompt. A token that is given by
+# file or environment is simply taken.
+wz_token() {
+	local n=0 rc _x=''
+	if [ -n "$CF_TOKEN_FILE" ] || [ -n "$CF_TOKEN_ENV" ]; then
+		wsay "$(t token_given)"
+		# (a token from the file or the environment that looks wrong stops the run, it is not asked again)
+		WIZARD=0
+		need_token
+		WIZARD=1
+		return 0
+	fi
+	wsay ""
+	wz_token_box
+	wsay ""
+	wz_read _x "$(t p_token_enter)"
+	while [ "$n" -lt 3 ]; do
+		n=$((n + 1))
+		rc=0
+		read_token || rc=$?
+		case "$rc" in
+			0) return 0 ;;
+			1) wsay "  $(t token_empty)" ;;
+			*) wsay "  $(t token_bad)" ;;
+		esac
+	done
+	die "$(t token_gave_up)" 1
+}
+
+# Is the domain on Cloudflare? yes: go on, no: the how-to and the end of the run (exit 0, nothing changed).
+wz_ask_cloudflare() {
+	local a='' n=0
+	while [ "$n" -lt 6 ]; do
+		n=$((n + 1))
+		wz_read a "$(t q_cf)"
+		case "$a" in
+			y | Y | yes | YES | j | J | ja | JA | Ja) return 0 ;;
+			n | N | no | NO | nein | NEIN | Nein)
+				wsay ""
+				wz_howto
+				wz_no_domain
+				wsay ""
+				wsay "$(t cf_not_ready)"
+				logf "wizard: the domain is not on Cloudflare yet, stopped without changes"
+				exit 0
+				;;
+			h | H | help | HELP | hilfe | HILFE | Hilfe | '?')
+				wsay ""
+				wz_howto
+				wsay ""
+				;;
+			*) wsay "  $(t bad_answer)" ;;
+		esac
+	done
+	die "$(t stopped)" 1
+}
+
+# Password protected (default) or public. Not asked when --public or --auth was given.
+wz_ask_access() {
+	local a='' n=0
+	[ -z "$AUTH_WANT" ] || return 0
+	if [ "$UI_LANG" = de ]; then
+		wsay "Wer darf aus der Paket-Quelle herunterladen?"
+		wsay "  1) nur mit Passwort (empfohlen; der Zugang wird automatisch erzeugt)"
+		wsay "  2) jeder, der die Adresse kennt (oeffentlich)"
+	else
+		wsay "Who may download from the repository?"
+		wsay "  1) only with a password (recommended; a login is generated for you)"
+		wsay "  2) anybody who knows the address (public)"
+	fi
+	while [ "$n" -lt 3 ]; do
+		n=$((n + 1))
+		wz_read a "$(t p_access)"
+		case "$a" in
+			'' | 1) AUTH_WANT=auth ;;
+			2) AUTH_WANT=public ;;
+			*)
+				wsay "  $(t bad_access)"
+				continue
+				;;
+		esac
+		AUTH_MODE=$AUTH_WANT
+		return 0
+	done
+	die "$(t access_gave_up)" 1
+}
+
+wz_summary() {
+	local acc
+	acc=$(t sum_auth)
+	if [ "$AUTH_MODE" = public ]; then acc=$(t sum_public); fi
+	{
+		t sum_title
+		printf '\n\n'
+		printf '  %-26s https://%s\n' "$(t sum_addr)" "$DOMAIN"
+		printf '  %-26s %s\n' "$(t sum_access)" "$acc"
+		printf '  %-26s %s\n' "$(t sum_token)" "$(t sum_token_ok)"
+		printf '  %-26s %s\n' "$(t sum_what)" "$(t sum_what_v)"
+	} | box
+}
+
+# After the domain is typed: Cloudflare must have a zone for it, and it must be one label below the
+# zone. Asks for another address (three tries) instead of stopping.
+wz_zone_loop() {
+	local tries=0 rc prefix
+	while :; do
+		tries=$((tries + 1))
+		rc=0
+		cf_find_zone_try || rc=$?
+		case "$rc" in
+			0)
+				prefix=${DOMAIN%".$ZONE_NAME"}
+				if [ "$DOMAIN" = "$ZONE_NAME" ] || [[ $prefix != *.* ]] || [ "$ALLOW_DEEP" -eq 1 ]; then
+					return 0
+				fi
+				wsay ""
+				wz_zone_deep | sed 's/^/  /'
+				if [ "$tries" -ge 3 ]; then check_domain_depth; fi
+				;;
+			1) cf_die "looking up the DNS zone $ZONE_TRY_NAME" ;;
+			*)
+				wsay ""
+				wz_zone_missing | sed 's/^/  /'
+				if [ "$tries" -ge 3 ]; then cf_find_zone; fi
+				;;
+		esac
+		wsay ""
+		wz_ask_domain
+		wsay "  $(t addr_now)"
+	done
+}
+
+wz_zone_missing() {
+	if [ "$UI_LANG" = de ]; then
+		sed "s|@D@|$DOMAIN|g" << 'WZ_EOF'
+"@D@" wurde in Ihrem Cloudflare-Konto nicht gefunden (mit diesem Token gibt es
+keine DNS-Zone dafuer). Bitte pruefen Sie:
+  - Die Domain steht im Cloudflare-Dashboard auf "Active".
+  - Der Token hat unter Zone Resources diese Domain (oder All zones) und unter
+    Account Resources das Konto, dem sie gehoert.
+  - Die Adresse endet auf Ihre Domain, z.B. repo.example.com.
+Es wurde noch nichts angelegt. Geben Sie die Adresse noch einmal ein.
+WZ_EOF
+	else
+		sed "s|@D@|$DOMAIN|g" << 'WZ_EOF'
+"@D@" was not found in your Cloudflare account (with this token there is no
+DNS zone for it). Please check:
+  - The domain shows status "Active" in the Cloudflare dashboard.
+  - The token has this domain (or All zones) under Zone Resources and the
+    account that owns it under Account Resources.
+  - The address ends with your domain, for example repo.example.com.
+Nothing has been created yet. Please enter the address again.
+WZ_EOF
+	fi
+}
+
+wz_zone_deep() {
+	if [ "$UI_LANG" = de ]; then
+		sed -e "s|@D@|$DOMAIN|g" -e "s|@Z@|$ZONE_NAME|g" << 'WZ_EOF'
+"@D@" liegt mehr als eine Ebene unter der Zone @Z@. Das kostenlose
+Cloudflare-Zertifikat deckt nur @Z@ und *.@Z@ ab, https
+wuerde dort scheitern. Waehlen Sie einen Namen wie repo.@Z@.
+WZ_EOF
+	else
+		sed -e "s|@D@|$DOMAIN|g" -e "s|@Z@|$ZONE_NAME|g" << 'WZ_EOF'
+"@D@" is more than one label below the zone @Z@. The free Cloudflare
+certificate covers only @Z@ and *.@Z@, so https would fail there.
+Choose a name like repo.@Z@.
+WZ_EOF
+	fi
+}
+
+run_wizard() {
+	local a=''
+	WIZARD=1
+	trap 'ERR_REPORTED=1; printf "\n%s\n" "$(t stopped)" >&2; exit 130' INT
+	detect_system
+	wsay ""
+	wz_intro
+	wsay ""
+	wz_ask_cloudflare
+	wz_token
+	wsay ""
+	wz_ask_domain
+	wsay ""
+	wz_ask_access
+	wsay ""
+	wz_summary
+	logf "wizard: answers taken (address $DOMAIN, access $AUTH_MODE)"
+	if [ "$ASSUME_YES" -eq 0 ]; then
+		wz_read a "$(t q_start)"
+		case "$a" in
+			'' | y | Y | yes | YES | j | J | ja | JA | Ja) ;;
+			*) die "$(t stopped_nothing)" 2 ;;
+		esac
+	fi
+	trap - INT
+}
+
+# ---------------------------------------------------------------------------------------------
 # modes
 # ---------------------------------------------------------------------------------------------
 mode_install() {
+	if wizard_wanted; then
+		run_wizard
+	fi
 	need_domain
 	validate_inputs
+	if token_will_be_asked; then
+		token_box_compact
+	fi
 	need_token
 	say "VylarisSpace repository host installer"
 	say "  domain: $DOMAIN   repository: $REPO_DIR   state: $STATE_DIR   log: $LOG_FILE"
 	if [ "$AUTH_MODE" = public ] && [ -z "$AUTH_WANT" ]; then
 		say "  The host is saved as public (no password): add --auth to switch back to password protection."
 	fi
-	if [ -z "$(state_get DOMAIN)" ] && [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]; then
+	if [ "$WIZARD" -eq 0 ] && [ -z "$(state_get DOMAIN)" ] && [ "$ASSUME_YES" -eq 0 ] && [ -t 0 ]; then
 		say "  This will install packages (nginx, reprepro, ...), create a signing key, a repository, a"
 		say "  Cloudflare tunnel and a DNS record for $DOMAIN."
 		ask_yes "Continue?" || die "stopped by you. Nothing was changed." 2
@@ -2489,6 +3096,7 @@ mode_uninstall() {
 # ---------------------------------------------------------------------------------------------
 main() {
 	parse_args "$@"
+	detect_lang
 	if [ "$DELETE_DNS" -eq 1 ] && [ "$MODE" != uninstall ]; then
 		printf '%s: --delete-dns only works together with --uninstall-tunnel (try --help)\n' "$PROG" >&2
 		exit 1
