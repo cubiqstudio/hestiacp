@@ -15,15 +15,365 @@ protect the choice of the candidate version and upgrades; they are not a lock ag
 Everything runs on the owner's infrastructure. No key, host name, password or contact address is stored
 in the git repository. There is deliberately no default host.
 
-| File                  | Purpose                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------- |
-| `make-signing-key.sh` | Create a new signing key pair (offline primary key, signing subkey, revocation cert)   |
-| `repo-init.sh`        | Create the reprepro layout, suites, public key, sample nginx config                    |
-| `repo-publish.sh`     | Add debs, verify the signature chain, keep the last 3 builds, store the source archive |
-| `client-setup.sh`     | Run on a server: keyring, source list, pins, optional credentials                      |
+| File                  | Purpose                                                                                      |
+| --------------------- | -------------------------------------------------------------------------------------------- |
+| `make-signing-key.sh` | Create a new signing key pair (offline primary key, signing subkey, revocation cert)         |
+| `repo-init.sh`        | Create the reprepro layout, suites, public key, sample nginx config                          |
+| `repo-publish.sh`     | Add debs, verify the signature chain, keep the last 3 builds, store the source archive       |
+| `client-setup.sh`     | Run on a server: keyring, source list, pins, optional credentials                            |
+| `setup-repo-host.sh`  | ONE script: runs all of the above on a fresh machine and exposes it with a Cloudflare tunnel |
 
 All scripts: `--help` prints the usage. They are plain bash, `shellcheck` clean, and refuse to work
 inside a git working tree where that would leak secrets or mix packages into the source tree.
+
+## Repository host installer (`setup-repo-host.sh`): everything in one script
+
+For the owner who does not want to run the four scripts by hand. On a fresh Debian 12/13 or Ubuntu
+22.04/24.04 machine (root, a git checkout of this repository on it) one command creates the signing
+key, the apt repository, the web server, a Cloudflare Tunnel with your domain, builds and publishes the
+panel package, checks everything and prints the command for a new panel server. It does not duplicate
+the other scripts: it calls `make-signing-key.sh`, `repo-init.sh`, `repo-publish.sh` (and prints the
+`client-setup.sh` / installer commands).
+
+You need, once:
+
+1. A domain whose DNS is on Cloudflare (a free account is enough). The host name you choose
+   (for example `repo.example.com`) must be **dedicated to this repository** (see section 5, the pin
+   is bound to the host name). It must be **one label below the zone** (`repo.example.com` in
+   `example.com`): the free Universal SSL certificate covers `example.com` and `*.example.com` only, so
+   `repo.srv.example.com` would fail on https. The script refuses such a name (`--allow-deep-host` if you
+   have an Advanced Certificate).
+2. A Cloudflare **API token**. Dashboard: _My Profile_ (top right) > _API Tokens_ > _Create Token_ >
+   _Create Custom Token_ (newer dashboards also offer _Manage Account_ > _Account API Tokens_; the
+   wording differs a little). Permissions. The dashboard labels them _Edit_ and _Read_; the API
+   documentation calls the same permissions _Cloudflare Tunnel Write_ (or _Cloudflare One Connectors
+   Write_), _DNS Write_ and _Zone Read_:
+
+   | Scope   | Resource          | Dashboard label | API documentation                                            |
+   | ------- | ----------------- | --------------- | ------------------------------------------------------------ |
+   | Account | Cloudflare Tunnel | Edit            | Cloudflare Tunnel Write (or Cloudflare One Connectors Write) |
+   | Zone    | DNS               | Edit            | DNS Write                                                    |
+   | Zone    | Zone              | Read            | Zone Read                                                    |
+
+   _Account Resources_: Include > the account that owns the zone. _Zone Resources_: Include > the zone
+   of your domain (or all zones). _Continue to summary_ > _Create Token_, copy the token (shown only
+   once). The two permissions that change something must be **Edit**; _Read_ is not enough for them (the
+   script can only check that the token can read; it finds out about the write permissions when it creates
+   the tunnel, which is the first thing it creates).
+
+3. **Cloudflare Zero Trust (Cloudflare One) must be activated in the account.** Tunnels belong to that
+   product: in the dashboard open _Zero Trust_ once. It may ask for a one-time setup (a team name and a plan;
+   the free plan is offered). This is **unverified**: it was not tried against a real account here, and the
+   dashboard wording changes. If the script reports an error while creating the tunnel although the token
+   has the permissions, check this first.
+4. **The checkout on the repository machine.** The script must run from a git checkout of this repository
+   (`git clone`), and the build runs programs of that checkout **as root**. So use **your own clean clone**
+   that nobody else can write to, not a shared directory. A normal `git clone` as your own user and then
+   `sudo bash src/vylaris/setup-repo-host.sh ...` works (directories 775 with your private group are
+   accepted; the script refuses a checkout that belongs to a third user, that every user can write to, or
+   that a group with other members can write to; it looks at the checkout directory, `.git`, `.git/config`,
+   `.git/hooks` and `src/`, not at the rest of the tree). For a **private fork** on GitHub the new machine needs
+   credentials to clone: clone as root with a personal access token or a read-only **deploy key**
+   (GitHub: repository > Settings > Deploy keys; put the private key in `/root/.ssh/` with mode 600 and use the
+   `git@github.com:...` address), or clone as your own user with your credentials and run the script with `sudo`.
+   If you copied the files instead of cloning: `git init`, commit them, and `chmod -R go-w` the directory
+   (the script also needs `.git` for the source archive of the package).
+
+This is a **private** repository for your own servers. Do not use it as a high-volume public mirror on a
+free Cloudflare plan: that can breach Cloudflare's CDN terms of service. If `apt` gets a 403 from the public
+name (Cloudflare's Browser Integrity Check or Bot Fight Mode takes `apt` for a bot), add a WAF custom rule
+with the action _Skip_ (for Browser Integrity Check and Bot Fight Mode) for the host name and the paths
+`/dists/` and `/pool/`. Also allow **outgoing port 7844** (TCP and UDP) on the repository machine:
+`cloudflared` connects to Cloudflare through it.
+
+Then, as root on the repository machine:
+
+```bash
+git clone <your repository> && cd <it>        # as root, or as your user and then use sudo below
+CLOUDFLARE_API_TOKEN=... bash src/vylaris/setup-repo-host.sh --domain repo.example.com
+```
+
+Better for the shell history: run it without the token and type it into the hidden prompt, or
+`--cf-token-file FILE`. Without `--domain` the script asks. At the end it prints, and saves in
+`/root/vylarisspace-repo-host/CLIENT-INSTALL.txt` (mode 600), the URL, the **fingerprint of the signing
+key** and the exact commands for
+
+- a **new panel server** (`install/hst-install-ubuntu.sh --vylaris-repo https://DOMAIN --vylaris-key-fingerprint FPR`,
+  the repository login in the environment variable `VYLARIS_REPO_AUTH`), and
+- a server with the panel **already installed** (`client-setup.sh --repo https://DOMAIN --key-fingerprint FPR --update`).
+
+The login is offered in two forms: typed at a hidden prompt (nothing in the shell history) and as an
+environment prefix `VYLARIS_REPO_AUTH='user:password'` (stays in the history). The hidden-prompt form is **one
+line** joined with `&&` (`read -r -s -p ... VYLARIS_REPO_AUTH && echo && export VYLARIS_REPO_AUTH && bash ...`):
+paste it as a whole; with two separate lines `read` would swallow the second line. The installer option
+`--vylaris-repo-auth` is **not** printed: it would show the password in `ps` while it runs. The password
+is printed in the terminal **only once**: by the first run that completes after it was generated. Every
+later run (and `--print-client-command`) names the file `repo-auth` instead. To see it again:
+
+```bash
+bash src/vylaris/setup-repo-host.sh --print-client-command --show-login # changes nothing
+cat /root/vylarisspace-repo-host/CLIENT-INSTALL.txt                     # mode 600, always has it
+```
+
+`--show-login` alone (without `--print-client-command`) is only a modifier of an installer run: that run
+prints the login in its summary.
+
+### What it does
+
+| Step | What                                                                                                                                                                                                                                                                                                                                  |
+| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1    | Root, supported system; installs `reprepro gnupg nginx curl jq openssl git ...`; then every refusal that can be known in advance (checkout, version to build, disk space, repository directory, nginx site and port, token read access, zone, existing DNS and tunnel); **last, creates the tunnel** (the first write with the token) |
+| 2    | Signing key with `make-signing-key.sh` (generated passphrase in `key.pass`, never printed; a second GnuPG home with only the signing subkey for reprepro)                                                                                                                                                                             |
+| 3    | Repository `/srv/vylarisspace-repo` with `repo-init.sh --server-name DOMAIN` (`--staging` optional)                                                                                                                                                                                                                                   |
+| 4    | nginx site `/etc/nginx/conf.d/vylarisspace-repo.conf`: only `127.0.0.1:8088`, plain http, root `<repo>/public`, no listing, headers, basic auth (generated login)                                                                                                                                                                     |
+| 5    | Cloudflare API: route of the (remotely managed) tunnel `DOMAIN -> http://127.0.0.1:8088`, proxied CNAME `DOMAIN -> <id>.cfargotunnel.com`, tunnel run token                                                                                                                                                                           |
+| 6    | `cloudflared` from `pkg.cloudflare.com` (key fingerprint pinned), systemd service `vylarisspace-tunnel`, waits until the tunnel is healthy                                                                                                                                                                                            |
+| 7    | Builds the `hestia` package from this checkout (`src/hst_autocompile.sh --hestia --noinstall --keepbuild --pkgrev N '~localsrc'`) or takes `--deb FILE`; publishes with `repo-publish.sh`                                                                                                                                             |
+| 8    | Verifies: local nginx (401 without login, 200 with), signature of `InRelease` against the exported key, private paths closed, then `https://DOMAIN/dists/CODENAME/InRelease` (retries up to 90 s)                                                                                                                                     |
+| 9    | Summary in German and English, `CLIENT-INSTALL.txt`                                                                                                                                                                                                                                                                                   |
+
+Every step is idempotent and says `[done]` or `[skipped]`. A second run never creates a second signing
+key or tunnel, never changes the repository login, the passphrase or the tunnel token, and leaves nginx
+and the service alone when they are right. If it stops, run the same command again: it resumes.
+Only one run at a time (a lock file `/run/vylarisspace-repo-host.lock`; `/run/lock` is only the fallback).
+Step 1 first installs the packages and makes the empty state directory (that is all it does before the checks).
+The refusals that can be known in advance then come **before the signing key, the repository, the nginx site, the tunnel
+and the DNS record exist**: wrong token, missing read permission, domain not in the account, a domain
+too deep below the zone, an existing A/AAAA/CNAME record of the domain (replace only with `--force-dns`;
+a CNAME to **another** tunnel counts as foreign, only a CNAME to the tunnel of this machine is ours), a
+tunnel of the same name that is not completely empty (no ingress, no catch-all rule, no warp routing) or
+has a local config file, a busy port (`--listen-port`), an nginx site `vylarisspace-repo.conf` that this script
+did not write (`--force`), a repository directory that is not empty and not ours, a checkout that belongs to
+somebody else or is writable by others, a dirty checkout when a package has to be built or published, too little disk
+space (also the 3 GB for a build, but only when a build is needed), and a changed `--domain`, `--tunnel-name`
+or `--state-dir`. Two things can only fail later, on purpose, and leave
+what was done in place (the same command resumes): a missing **write** permission for DNS (the tunnel
+write permission fails in step 1; the DNS one in step 5, after key, repository, nginx and the tunnel with its route
+exist), and an `nginx -t` failure (the previous nginx setup is restored). A refused
+run prints the reason and nothing else; after exit 3, 4 and 5 it adds that the same command resumes.
+Further refusals: a different `--auth-user` than the existing login, and a different `--domain` than the saved
+one (compared after lower-casing and removing a trailing dot); `--delete-dns` without `--uninstall-tunnel` is a usage
+error (exit 1).
+
+**The signing key and the login are never replaced by accident.** The state directory is recorded in
+`/etc/vylarisspace-repo-host/state-dir` as soon as the signing key exists in it (an empty directory of a run that
+failed early pins nothing; to use another directory then, delete that file only if the old directory has no
+`keys/` yet); a later `--state-dir` that differs is refused (exit 2). A changed `--tunnel-name` is refused as well
+once a tunnel is in the state (a new name would mean a second tunnel). If a
+repository, a password file or a tunnel token of an earlier run exists but the key or the login of the
+state directory is missing (directory lost, moved, wrong `--state-dir`), the script stops instead of
+creating a new key or password that would lock out every server. The public key of the repository must
+have the fingerprint of the key in the state directory. A state directory that already exists must be
+empty and private or carry the marker file `.vylarisspace-repo-host-state`; the script never changes the
+mode of a directory it did not create, and refuses relative paths and system directories. A repository
+directory that holds only what `repo-init.sh` makes before its last step (empty directories, an empty
+`conf/distributions`) is the leftover of a stopped run and is continued; anything else in it is refused.
+
+**Tunnel and DNS are only touched when they are ours.** An existing tunnel of the same name is taken over
+only when it is completely empty; the state remembers whether the script created the tunnel
+(`TUNNEL_CREATED=yes`). `--uninstall-tunnel --delete-dns` deletes the tunnel only in that case, otherwise it
+says so and leaves it. DNS lists are asked with `name.exact=` and checked again on the host name, so a
+record of another name is never changed. `--force-dns` first writes the old records (type, content, ttl,
+proxied) to the log and to `dns-backup-*.json` (mode 600) in the state directory, then changes the record
+in place (an A record becomes the CNAME without a gap) and deletes the others afterwards. Cloudflare does
+not allow a CNAME next to an A/AAAA record; if it refuses the change with an answer about the content (HTTP 400 or
+409), the other records are deleted first (they are in the backup file). Any other failure of that change (401/403: the
+token lacks DNS Edit; 429; a 5xx; no answer) stops the run with exit 4 and **deletes nothing**. A DNS record creation that ended in an error is checked again before it is
+reported as failed. HTTP 429 is answered with the `Retry-After` wish of Cloudflare (at most 60 s, a longer
+wish stops the run; run it again later; leading zeros are ignored).
+
+The package: version `<base>-<pkgrev>+<distro>`, default revision 100, the suite is the codename of this
+machine (a deb built here is only for this system; the script does not claim support for other
+codenames, `--deb FILE` publishes whatever suites the files belong to). If that version or a newer one is
+already published, the build is skipped (`--rebuild` builds and publishes the next revision, for example
+after a `git pull`). Whether the version is published already is decided **first**: a rerun that builds nothing
+is not refused because the tree is dirty. When a build or a `--deb` publish is going to happen, a checkout with
+uncommitted changes or untracked files is refused in step 1 ("commit your changes (`git add <files>; git commit`) or
+move stray files out of the checkout"; `--allow-dirty` overrides; the source archive for the GPL offer then lacks the
+changes). Building needs internet (npm,
+Packagist) and about 3 GB free in `/var/tmp`; `src/hst_autocompile.sh` installs Node.js and Composer
+itself when they are missing.
+
+### Options
+
+| Option                                     | Meaning                                                                                                                                                                                                      |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `--domain NAME`                            | Host name of the repository (default: the saved one, else the script asks)                                                                                                                                   |
+| `--cf-token-file FILE`                     | Token from a file (first line); else `CLOUDFLARE_API_TOKEN`; else hidden prompt                                                                                                                              |
+| `--public` / `--auth`                      | No password / password protection (default on; the choice is saved)                                                                                                                                          |
+| `--auth-user NAME`                         | User name of the generated login (default `vylaris-server`)                                                                                                                                                  |
+| `--staging`                                | Also create `<codename>-staging` suites (only for a new repository)                                                                                                                                          |
+| `--listen-port PORT`                       | Local port of the site (default 8088)                                                                                                                                                                        |
+| `--repo-dir DIR`, `--state-dir DIR`        | Defaults `/srv/vylarisspace-repo`, `/root/vylarisspace-repo-host` (the state dir is saved)                                                                                                                   |
+| `--show-login`                             | Modifier: the run prints the login. To only print it: `--print-client-command --show-login`                                                                                                                  |
+| `--deb FILE` (repeatable)                  | Publish these packages instead of building                                                                                                                                                                   |
+| `--rebuild`, `--pkgrev N`, `--allow-dirty` | Package build control                                                                                                                                                                                        |
+| `--tunnel-name NAME`                       | Tunnel name (default `vylarisspace-repo`)                                                                                                                                                                    |
+| `--force-dns`                              | Replace an existing A/AAAA/CNAME record of the domain (old records are saved first)                                                                                                                          |
+| `--force`                                  | Overwrite an nginx site `vylarisspace-repo.conf` that this script did not write                                                                                                                              |
+| `--allow-deep-host`                        | Accept a domain more than one label below the zone (needs an Advanced Certificate)                                                                                                                           |
+| `--skip-tunnel-service`                    | Only the API part; prints the `docker run` / `cloudflared` command to run it yourself (the summary then says the tunnel is NOT running yet; exit 0)                                                          |
+| `--cloudflared-deb FILE`                   | Install cloudflared from this file (offline or own build)                                                                                                                                                    |
+| `--print-client-command`                   | Print the commands for new servers again (no changes)                                                                                                                                                        |
+| `--status`                                 | nginx, service, tunnel (needs the token; Enter at the prompt, or an API problem, prints `not checked`), published versions; exit 6 if something is down                                                      |
+| `--uninstall-tunnel` [`--delete-dns`]      | Remove the cloudflared service; with `--delete-dns` also the DNS record (and the tunnel, if this script created it); the token is tried first, a wrong one removes nothing. `--delete-dns` alone is an error |
+| `-y`, `--yes`                              | No confirmation questions                                                                                                                                                                                    |
+
+Exit codes: 0 done, 1 usage, 2 refused (nothing damaged), 3 this machine cannot do it (not root,
+system, tool, disk), 4 Cloudflare API error (with a hint: wrong token, missing permission, domain not in
+the account), 5 build or publish failed, **or the local check of the new repository failed** (nginx or the repository on this
+machine is wrong: waiting does not help, the message says where to look), 6 installed but the public check did not pass yet
+(the public address does not answer yet, the tunnel is not healthy: wait a few minutes, run the same command again; if
+it stays so, check that the machine may connect **outward to port 7844, TCP and UDP**, which `cloudflared` needs).
+After exit 3, 4 and 5 the script prints that the same command resumes (after 1 and 2 the error says what to fix).
+A tunnel that Cloudflare reports as `degraded` (up with reduced redundancy) counts as working. The log
+(`/var/log/vylarisspace-repo-host.log`, mode 600, timestamps, no secrets) and the build log
+(`.build`) are next to it.
+
+### Where things are, and what to back up
+
+```text
+/root/vylarisspace-repo-host/      (mode 700)  BACK UP THIS DIRECTORY, to another machine
+  keys/out/                        public key, revocation certificate, secret key exports (mode 600)
+  keys/gnupg-primary/              the primary key (passphrase protected)
+  keys/gnupg-signing/              signing subkey only, used by reprepro
+  key.pass                         passphrase of the secret keys (mode 600, never printed)
+  repo-auth                        user:password of the repository (mode 600)
+  state.env                        domain, tunnel id, TUNNEL_CREATED, port, key fingerprint (no secrets)
+  CLIENT-INSTALL.txt               the commands for new servers (mode 600)
+  dns-backup-*.json                records that --force-dns replaced (mode 600)
+  .vylarisspace-repo-host-state    marker: this directory was created by the script
+/etc/vylarisspace-repo-host/state-dir    where the state directory is (a different one is refused); written once the signing key exists
+/etc/vylarisspace-repo-host/tunnel.env   tunnel run token (mode 600), read by the service
+/etc/nginx/conf.d/vylarisspace-repo.conf, /etc/nginx/vylarisspace-repo.htpasswd (640 root:www-data)
+/etc/nginx/vylarisspace-repo.conf.bak    the original of a site that this script did not write (only with --force; the first copy is never overwritten, a second original gets .bak.<date>)
+/etc/systemd/system/vylarisspace-tunnel.service
+/srv/vylarisspace-repo/            the repository; back up conf/ db/ archive/ public/ as well
+/run/vylarisspace-repo-host.lock   the lock of a running script (/run is writable by root only)
+```
+
+**If the signing key is lost, every server has to be set up again** with a new key and a new
+fingerprint; the repository cannot be signed by anyone else. Keep the backup of `keys/` and `key.pass`
+apart (password manager). The primary key stays on the machine, protected by the passphrase that lies
+next to it; for more safety follow section 1 ("offline primary key"): copy `keys/out` to offline media and
+remove `secret-primary-*` and `keys/gnupg-primary` afterwards. The script never deletes keys.
+
+### Secrets
+
+- The Cloudflare API token is read once from the file, the environment or the hidden prompt, removed from
+  the environment (programs started by the script do not inherit it) and passed to `curl` only as
+  configuration on standard input. It is never in a command line, never in a file, never in the log and
+  never printed. Tracing (`bash -x`) is switched off. It is not needed after the run (except `--status`
+  and `--uninstall-tunnel --delete-dns`): delete it in the dashboard. Residual exposure: it lives in the
+  memory of the script (and in the shell history if you typed `CLOUDFLARE_API_TOKEN=...` on the command
+  line).
+- The **tunnel run token** is fetched from the API and written to `/etc/vylarisspace-repo-host/tunnel.env`
+  (mode 600). The service reads it with `EnvironmentFile=`, so the daemon's command line is only
+  `cloudflared --no-autoupdate tunnel run` and the unit file (mode 644) contains no secret. Design
+  rationale (not something that was tested here): with `cloudflared service install TOKEN` the token would
+  be on the command line / in the unit file as `--token`, where other users could read it; this script
+  avoids that by an `EnvironmentFile`. The answer of the API that carries the token is kept only in a
+  private temporary directory (on `/run`, a memory file system, when there is one) and wiped as soon as the
+  token has been read. Residual exposure: root, and the process environment of the service (readable by
+  root only).
+- The repository password is generated (`openssl rand`), saved in `repo-auth` (600), and hashed in the
+  htpasswd file (apr1). It is shown in the terminal once (the first completed run, or `--show-login`) and
+  is always in `CLIENT-INSTALL.txt` (600), so you can give it to your servers. Servers store it in
+  `/etc/apt/auth.conf.d/vylarisspace.conf` (600).
+  `client-setup.sh` refuses to send credentials over plain `http://`; use the https address.
+- Cloudflare terminates TLS: Cloudflare can see the (signed, public) package traffic and the login.
+  The packages are signed, so a tampered download is rejected by apt; the login only decides who may
+  download. Use a separate login per server if you need to lock out one server (`htpasswd`, section 4).
+
+### cloudflared from the Cloudflare repository
+
+The script adds `deb [signed-by=/usr/share/keyrings/cloudflare-public-v2.gpg] https://pkg.cloudflare.com/cloudflared any main`
+and refuses unless the downloaded key has exactly one primary key with the fingerprint (it tries
+`https://pkg.cloudflare.com/cloudflare-public-v2.gpg` first and `.../cloudflare-main.gpg` second; the same
+fingerprint is required from either)
+
+```text
+CC94B39C77AE7342A68B89628A682D308D4E5E73   CloudFlare Software Packaging 2025 <help@cloudflare.com>
+```
+
+How this was checked (2026-11-05, from the build machine through its web proxy): the key was fetched from
+`cloudflare-public-v2.gpg`, `cloudflare-main.gpg` and `cloudflare-ascii-pubkey.gpg` (the same key), the
+`InRelease` of `.../cloudflared/dists/any/` carried a good signature of that key (the file is signed twice:
+the second signature is by an older key `254B391D8CACCBF8` that is not in this keyring, apt needs one valid
+signature), and `apt-get install cloudflared` worked in the test containers. The fingerprint was read from
+`pkg.cloudflare.com` itself and was **not** compared with a second, independent source (for example a
+printed page of Cloudflare's documentation). Do that before you trust it, and if Cloudflare rotates its key the script stops with a clear message: update
+the constant `CFD_KEY_FPR` or install cloudflared yourself and pass `--cloudflared-deb FILE`.
+
+### Maintenance
+
+- New panel version: `git pull`, then `bash src/vylaris/setup-repo-host.sh --rebuild` (token needed only for
+  the API checks; the same token or a new one).
+- `bash src/vylaris/setup-repo-host.sh --status`, `--print-client-command`.
+- Stop the tunnel: `--uninstall-tunnel` (service only) or `--uninstall-tunnel --delete-dns` (also the DNS
+  record and the tunnel at Cloudflare). The repository, nginx site and keys stay. Another domain: do
+  `--uninstall-tunnel --delete-dns` first, then run with the new `--domain`; the key stays the same.
+- DNS and tunnel can need a few minutes after the first run; exit code 6 and the message say so.
+- The unit starts `cloudflared` by its real path (`readlink -f`), so a link such as `/usr/local/bin/cloudflared`
+  does not matter.
+
+### Tests of the host installer
+
+`test/vylaris-repo-host/` (needs Docker and the two prebuilt test packages of
+`test/vylaris-upgrade/build-debs.sh`, found in `/tmp/vylaris-upgrade-test/debs` or built on the way):
+
+```text
+mock-cloudflare.py   stand-in for the Cloudflare API (Python 3 standard library): exactly the endpoints the script
+                     uses, Bearer token check, Cloudflare style answers, wrong token / missing permission / zone
+                     not found / foreign DNS record / existing tunnel / "HTTP 500 once" / "429 with Retry-After" /
+                     "record created although the answer was a 500" on demand; the DNS list honours ONLY
+                     name.exact (everything else returns all records), tunnel "connections" is always empty
+                     (deprecated), plus an "edge" on https that forwards to the tunnel route once a tunnel is
+                     connected
+guest.sh             runs inside the container: fresh Ubuntu/Debian with only python3 and openssl added
+run.sh               builds the image, copies the checkout in, starts the container, prints PASS/FAIL lines
+Dockerfile
+```
+
+```bash
+test/vylaris-repo-host/run.sh # profile a on ubuntu:24.04
+test/vylaris-repo-host/run.sh --profile b --image debian:12
+```
+
+The logs go to a new directory from `mktemp -d` under `/tmp` (printed at the end); `--result DIR` is accepted
+only for a new or empty directory, the runner never deletes anything there.
+
+Profiles: `a` (error cases: API base, state directory and lock, foreign DNS records and tunnels, zone depth,
+rate limit including `Retry-After` with leading zeros; a token that may only read tunnels, too little disk for the
+build, a dirty checkout and a foreign repository directory, all refused in step 1 with nothing created; full run
+with decoys in the mock, an interrupted first run, idempotency, nginx login, signature, `CLIENT-INSTALL.txt`
+(one-line login forms), password printed once, secret scan, lost state / key / login, a renamed `--tunnel-name`,
+files that are not keys, the checkout rules (other owner, a plain user clone with 775 and a private group, a group
+with other members, world-writable `.git/config`, `.git/hooks`, `src/`), the lock in `/run`, `client-setup.sh`
+and `apt-get install -s hestia`, `--status` (also with a wrong token), `--print-client-command`, `--public` /
+`--auth` and the saved mode, uninstall with a wrong token (nothing torn down) and resume),
+`b` (`--force-dns` in place and with A + AAAA, a PATCH that fails with 500/403 and deletes nothing, foreign nginx
+site and its single `.bak`, a repository directory that holds only the `repo-init.sh` skeleton, the export under
+`umask 022`, a 2 MB `nginx -T` output, busy port, `nginx -t` rollback, `--skip-tunnel-service` and its headline,
+`--public`, `--staging`, several suites, the build path, a rerun that builds nothing on a dirty tree, untracked
+files, a DNS record that was created although the answer was a 500, a token that may read but not write DNS,
+a failing local check (exit 5), an unreachable public address, a degraded tunnel, token file and hidden prompt on a
+pty (also Enter alone), `bash -x`),
+`cfd` (the real `pkg.cloudflare.com`, a fake one that must be refused, the second key address, a captive-portal page
+at the first or at both key addresses), `build` (the real `hst_autocompile.sh` build). The container has no
+systemd: `systemctl` is a stub that starts the `ExecStart` of the unit with its `EnvironmentFile`, `cloudflared` is
+a stub package (`--cloudflared-deb`) that tells the mock that the tunnel is connected, `df` is a stub that can report
+a full `/var/tmp`; the unit file is checked with the real `systemd-analyze verify`. The Cloudflare API itself is never
+contacted (profile `cfd` and `build` do use the network: `pkg.cloudflare.com`, npm, Packagist).
+
+Result of the last run of the whole set, after the last change of the script (all with `0 failed`): profile `a`
+451 checks on each of `ubuntu:24.04`, `ubuntu:22.04` and `debian:12`; profile `b` 165 checks on `ubuntu:24.04`;
+profile `cfd` 38 checks on `ubuntu:24.04`; profile `build` 5 checks on `ubuntu:24.04`. Not run: profile `b`, `cfd` and
+`build` on the other images.
+
+Not covered by these tests: the real Cloudflare API (answers of the mock follow the documented shape and were
+not compared with live responses), a real tunnel connection, real DNS and a real Cloudflare certificate, systemd as
+PID 1 (only the unit syntax was verified), Debian 13.
 
 ## Requirements
 
@@ -480,8 +830,12 @@ distribution to customers' servers counts as conveying is a legal question liste
 
 ## Not verified
 
-- No real `hestia` package was built or published; the tests used dummy debs with the same package
-  name and version scheme.
+- The package build of the host installer (profile `build` of `test/vylaris-repo-host/`) ran once, on
+  `ubuntu:24.04` in a container with Node.js and Composer installed by `hst_autocompile.sh`: it built a real
+  `hestia_1.10.5-100+ubuntu24.04_amd64.deb` from the checkout and published it into a test repository (5 checks
+  passed; its output was not installed on a machine). Other distributions and architectures were not built; no
+  package was published on a real host, and the other tests used dummy debs with the same package name and
+  version scheme.
 - No run on a real server and no real host name. Tests ran in chroots on one machine with a local
   nginx and a mapped host name.
 - Passphrase-protected key handling was checked for generation, export and signing-home creation; the
