@@ -1,0 +1,7 @@
+# The "repo" container of the upgrade test: serves the signed test apt repository over
+# https (nginx, certificate signed by the throw-away test CA) and answers DNS (dnsmasq)
+# for the server container. Every DNS query is logged, that is the list of host names
+# the server tried to resolve during the upgrade.
+ARG BASE=vylaris-upgrade-sys
+FROM ${BASE}
+RUN apt-get update && apt-get install -y --no-install-recommends nginx dnsmasq && rm -rf /var/lib/apt/lists/*
