@@ -995,7 +995,7 @@ if [ "$HESTIA_B" = true ]; then
 			# A kept build folder must not leak files of a previous build into this package
 			rm -rf $BUILD_DIR_HESTIA/usr/local/hestia/bin $BUILD_DIR_HESTIA/usr/local/hestia/func \
 				$BUILD_DIR_HESTIA/usr/local/hestia/install $BUILD_DIR_HESTIA/usr/local/hestia/web \
-				$BUILD_DIR_HESTIA/DEBIAN
+				$BUILD_DIR_HESTIA/etc $BUILD_DIR_HESTIA/DEBIAN
 			cp -rf bin func install web $BUILD_DIR_HESTIA/usr/local/hestia/
 
 			# Set permissions: directories 755, files 644, then the executables below
@@ -1008,6 +1008,12 @@ if [ "$HESTIA_B" = true ]; then
 			chmod +x $BUILD_DIR_HESTIA/usr/local/hestia/bin/*
 			find $BUILD_DIR_HESTIA/usr/local/hestia/install/ \( -name '*.sh' \) -exec chmod +x {} \;
 			chmod -x $BUILD_DIR_HESTIA/usr/local/hestia/install/*.sh
+			# Package guard: the apt hook is owned by the package (dpkg removes it with the package).
+			# It calls bin/v-check-package-source, which refuses a foreign package named hestia.
+			mkdir -p $BUILD_DIR_HESTIA/etc/apt/apt.conf.d
+			get_branch_file 'src/deb/hestia/90vylarisspace-guard' "$BUILD_DIR_HESTIA/etc/apt/apt.conf.d/90vylarisspace-guard"
+			chmod 755 $BUILD_DIR_HESTIA/etc $BUILD_DIR_HESTIA/etc/apt $BUILD_DIR_HESTIA/etc/apt/apt.conf.d
+			chmod 644 $BUILD_DIR_HESTIA/etc/apt/apt.conf.d/90vylarisspace-guard
 			chown -R root:root $BUILD_DIR_HESTIA
 			# Get Debian package files
 			mkdir -p $BUILD_DIR_HESTIA/DEBIAN
@@ -1019,8 +1025,15 @@ if [ "$HESTIA_B" = true ]; then
 			get_branch_file 'src/deb/hestia/copyright' "$BUILD_DIR_HESTIA/DEBIAN/copyright"
 			get_branch_file 'src/deb/hestia/preinst' "$BUILD_DIR_HESTIA/DEBIAN/preinst"
 			get_branch_file 'src/deb/hestia/postinst' "$BUILD_DIR_HESTIA/DEBIAN/postinst"
-			chmod +x $BUILD_DIR_HESTIA/DEBIAN/postinst
-			chmod +x $BUILD_DIR_HESTIA/DEBIAN/preinst
+			get_branch_file 'src/deb/hestia/prerm' "$BUILD_DIR_HESTIA/DEBIAN/prerm"
+			chmod 755 $BUILD_DIR_HESTIA/DEBIAN/postinst
+			chmod 755 $BUILD_DIR_HESTIA/DEBIAN/preinst
+			chmod 755 $BUILD_DIR_HESTIA/DEBIAN/prerm
+			# The marker Vylaris-Edition in the control file is what the guard looks for
+			if ! grep -q '^Vylaris-Edition: ' "$BUILD_DIR_HESTIA/DEBIAN/control"; then
+				echo >&2 "[!] src/deb/hestia/control has no Vylaris-Edition field, the package guard would not work"
+				exit 1
+			fi
 
 			echo Building VylarisSpace DEB
 			build_deb $BUILD_DIR_HESTIA

@@ -1,7 +1,7 @@
 #!/bin/bash
 # compare.sh - compare two snapshots (snapshot.sh) taken before and after an update.
 #
-#   compare.sh <before-dir> <after-dir> [--pkg-a A.tsv --pkg-b B.tsv] [--allow FILE]
+#   compare.sh <before-dir> <after-dir> [--pkg-a A.tsv --pkg-b B.tsv] [--allow FILE] [--strict]
 #   compare.sh --pkg-tsv <hestia.deb>        print the file list of a deb in the pkgfiles.tsv format
 #
 # Reports
@@ -16,6 +16,9 @@
 #             by their nature (logs, history, notifications of the update, sessions).
 #   UNEXPECTED everything else. The exit status is 1 when there is at least one.
 # The ALLOW list is deliberately short; add to it only with a reason.
+# --strict: do not use the NORMALIZE list below. A file that differs in a volatile field (disk usage,
+#           DNS serial, time stamps) is then UNEXPECTED too. The update from revision 100 to 101 runs
+#           no upgrade step and no user rebuild, so run.sh compares strictly: a rebuild would show.
 set -u
 
 if [ "${1:-}" = "--pkg-tsv" ]; then
@@ -40,6 +43,7 @@ shift 2
 PKG_A=''
 PKG_B=''
 EXTRA_ALLOW=''
+STRICT=0
 while [ $# -gt 0 ]; do
 	case "$1" in
 		--pkg-a)
@@ -53,6 +57,10 @@ while [ $# -gt 0 ]; do
 		--allow)
 			EXTRA_ALLOW=$2
 			shift 2
+			;;
+		--strict)
+			STRICT=1
+			shift
 			;;
 		*)
 			echo "unknown option $1" >&2
@@ -89,6 +97,7 @@ cat > "$NORM" << 'EON'
 ^/home/[^/]+/conf/dns/[^/]+\.db$	s/^[[:space:]]+[0-9]{10}[[:space:]]*$/ SERIAL/	the rebuild increments the SOA serial of the zone; the records are identical
 ^/etc/php/[^/]+/fpm/pool\.d/[^/]+\.conf$	/^; EDITED BY THE OWNER/d	the pool is regenerated from the admin-edited template: the edit made after the domain was created now takes effect (a customisation applied, not lost)
 EON
+[ "$STRICT" -eq 1 ] && : > "$NORM"
 NORM_REASON=''
 norm_equal() { # $1 = path; true when before/after are identical after the volatile fields are removed
 	local pat expr reason b a
@@ -166,7 +175,7 @@ tsv_diff() {
 }
 
 echo "================================================================================"
-echo " before: $(cat "$BEFORE/label.txt" 2> /dev/null)    after: $(cat "$AFTER/label.txt" 2> /dev/null)"
+echo " before: $(cat "$BEFORE/label.txt" 2> /dev/null)    after: $(cat "$AFTER/label.txt" 2> /dev/null)    $([ "$STRICT" -eq 1 ] && echo '[strict: no normalisation of volatile fields]')"
 echo "================================================================================"
 
 # ---------------------------------------------------------------- (a)

@@ -234,6 +234,14 @@ deb_field() {
 	dpkg-deb -f "$1" "$2"
 }
 
+# The package guard on the servers (src/deb/hestia/prerm, bin/v-check-package-source) refuses a
+# hestia package without the field Vylaris-Edition, so such a package must never be published.
+require_marker() { # deb
+	if [ "$(deb_field "$1" Package)" = "hestia" ] && [ -z "$(deb_field "$1" Vylaris-Edition)" ]; then
+		die "$1 has no Vylaris-Edition field. It is not a VylarisSpace build (for example the upstream package) and servers with the package guard would refuse it. Build it from this repository." 2
+	fi
+}
+
 suite_exists() {
 	grep -q "^Codename: $1\$" "$REPO/conf/distributions"
 }
@@ -381,6 +389,7 @@ publish_one() { # deb suite do_source(1|0)
 	pkg=$(deb_field "$deb" Package) || die "not a deb file: $deb"
 	ver=$(deb_field "$deb" Version)
 	arch=$(deb_field "$deb" Architecture)
+	require_marker "$deb"
 	if [ "$pkg" != "hestia" ] && [ "$ALLOW_OTHER" -eq 0 ]; then
 		die "$deb is package '$pkg'. Stage 1 of this repository carries ONLY 'hestia' (hestia-nginx, hestia-php and hestia-web-terminal come from the upstream repository). Use --allow-other-packages for stage 2." 2
 	fi
@@ -458,6 +467,7 @@ case "$MODE" in
 			if [ "$(deb_field "$d" Package)" != "hestia" ] && [ "$ALLOW_OTHER" -eq 0 ]; then
 				die "$d is package '$(deb_field "$d" Package)'. Stage 1 carries ONLY 'hestia'. Use --allow-other-packages for stage 2." 2
 			fi
+			require_marker "$d"
 			SUITES+=("$S")
 		done
 		for i in "${!DEBS[@]}"; do
@@ -484,6 +494,9 @@ case "$MODE" in
 			fi
 			if [ -n "$cur" ]; then
 				reprepro -b "$REPO" -A "$arch" -T deb remove "$SUITE" hestia > /dev/null
+			fi
+			if [ -z "$(deb_field "$f" Vylaris-Edition)" ]; then
+				echo "$PROG: WARNING: the archived hestia $VER ($arch) has no Vylaris-Edition field (built before the package guard). Servers with the guard refuse it until /etc/hestiacp/allow-foreign-hestia exists." >&2
 			fi
 			reprepro -b "$REPO" includedeb "$SUITE" "$f" > /dev/null
 			verify_published "$SUITE" "$f" hestia "$VER" "$arch"

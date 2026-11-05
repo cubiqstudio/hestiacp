@@ -1,0 +1,6 @@
+// VylarisSpace package guard: refuse a package named hestia that is not a VylarisSpace package.
+// apt passes the paths of the .deb files that it is about to install to the checker (one per line).
+// The hook does nothing when the checker is not installed, and it blocks only on the deliberate
+// refusal (exit code 1). Any other result (checker broken, not executable, killed) lets apt continue,
+// so a defect in the checker can never block the installation of its own fix.
+DPkg::Pre-Install-Pkgs { "[ ! -x /usr/local/hestia/bin/v-check-package-source ] || /usr/local/hestia/bin/v-check-package-source || [ $? -ne 1 ]"; };

@@ -282,6 +282,42 @@ function check_key_exists() {
 	grep -e "^$1=" $HESTIA/conf/hestia.conf
 }
 
+# Rewrite a KEY='value' configuration file: every key line is written as KEY='value',
+# duplicated keys are merged. Usage: syshealth_normalize_config_file INPUT OUTPUT
+# Values are kept byte-exact (a '#', '=', '&', '|', a backslash or spaces inside a value
+# belong to the value, hestia.conf has no comments behind values). Comment and empty
+# lines pass through unchanged. For a duplicated key the last value wins and stays at
+# the position of the first occurrence.
+function syshealth_normalize_config_file() {
+	local conf_in="$1" conf_out="$2"
+	local conf_line conf_lines=() conf_index lhs rhs
+	local -A conf_key_pos=()
+	while IFS= read -r conf_line || [ -n "$conf_line" ]; do
+		if [[ $conf_line =~ ^[[:space:]]*# ]] || [[ -z ${conf_line//[[:space:]]/} ]]; then
+			conf_lines+=("$conf_line")
+			continue
+		fi
+		IFS='= ' read -r lhs rhs <<< "$conf_line"
+		if [ -z "$lhs" ]; then # no key (hand-broken line): keep it as it is
+			conf_lines+=("$conf_line")
+			continue
+		fi
+		rhs="${rhs%"${rhs##*[! ]}"}" # Del trailing spaces
+		rhs="${rhs%\'}"              # Del closing string quote
+		rhs="${rhs#\'}"              # Del opening string quote
+		if [ -z "${conf_key_pos[$lhs]+x}" ]; then
+			conf_key_pos[$lhs]=${#conf_lines[@]}
+			conf_lines+=("$lhs='$rhs'")
+		else
+			conf_lines[${conf_key_pos[$lhs]}]="$lhs='$rhs'"
+		fi
+	done < "$conf_in"
+	: > "$conf_out"
+	for conf_index in "${!conf_lines[@]}"; do
+		printf '%s\n' "${conf_lines[$conf_index]}" >> "$conf_out"
+	done
+}
+
 # Repair System Configuration
 # Adds missing variables to $HESTIA/conf/hestia.conf with safe default values
 function syshealth_repair_system_config() {
@@ -615,22 +651,7 @@ function syshealth_repair_system_config() {
 		$BIN/v-change-sys-config-value "DOMAINDIR_WRITABLE" "no"
 	fi
 
-	: > "$HESTIA/conf/hestia.conf.new"
-
-	while IFS='= ' read -r lhs rhs; do
-		if [[ ! $lhs =~ ^\ *# && -n $lhs ]]; then
-			rhs="${rhs%%#*}"             # Del inline right comments
-			rhs="${rhs%"${rhs##*[! ]}"}" # Del trailing spaces
-			rhs="${rhs%\'}"              # Del closing string quote
-			rhs="${rhs#\'}"              # Del opening string quote
-		fi
-		check_ckey=$(grep "^$lhs='" "$HESTIA/conf/hestia.conf.new")
-		if [ -z "$check_ckey" ]; then
-			echo "$lhs='$rhs'" >> "$HESTIA/conf/hestia.conf.new"
-		else
-			sed -i "s|^$lhs=.*|$lhs='$rhs'|g" "$HESTIA/conf/hestia.conf.new"
-		fi
-	done < "$HESTIA/conf/hestia.conf"
+	syshealth_normalize_config_file "$HESTIA/conf/hestia.conf" "$HESTIA/conf/hestia.conf.new"
 
 	if ! cmp --silent "$HESTIA/conf/hestia.conf" "$HESTIA/conf/hestia.conf.new"; then
 		echo "[ ! ] Duplicated keys found repair config"

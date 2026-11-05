@@ -1,0 +1,59 @@
+#!/bin/bash
+# info: refuse a hestia package that is not a VylarisSpace package
+# options: [DEB]...
+#
+# example: v-check-package-source /var/cache/apt/archives/hestia_1.10.6-1+ubuntu24.04_amd64.deb
+#
+# This function is the apt hook behind /etc/apt/apt.conf.d/90vylarisspace-guard
+# (DPkg::Pre-Install-Pkgs). apt passes the paths of the .deb files that it is about to install
+# on stdin, one per line; the paths can also be given as arguments. A package named hestia
+# without the field Vylaris-Edition (for example the upstream package) would replace the
+# panel and remove the VylarisSpace themes, logos and update scripts, so the function exits
+# with 1 and apt installs nothing. All other packages (hestia-nginx, hestia-php, ...) pass.
+# Deliberate override: touch /etc/hestiacp/allow-foreign-hestia (removed again when the next
+# VylarisSpace package is configured), VYLARIS_ALLOW_FOREIGN_HESTIA=yes, or UPSTREAM_UPDATES='yes'
+# in hestia.conf. The function reads only the control data of the
+# files, no network and no hestia configuration is used on the normal path.
+
+allow_file='/etc/hestiacp/allow-foreign-hestia'
+[ -f "$allow_file" ] && exit 0
+[ "${VYLARIS_ALLOW_FOREIGN_HESTIA:-}" = "yes" ] && exit 0
+# An admin who switched upstream updates on (UPSTREAM_UPDATES='yes') asked for upstream packages
+grep -qs "^UPSTREAM_UPDATES='yes'" /usr/local/hestia/conf/hestia.conf && exit 0
+command -v dpkg-deb > /dev/null 2>&1 || exit 0
+
+refused=()
+
+check_deb() {
+	local deb="$1"
+	[ -f "$deb" ] || return 0
+	# a file name that starts with a dash must not be taken for an option
+	case "$deb" in
+		-*) deb="./$deb" ;;
+	esac
+	[ "$(dpkg-deb -f "$deb" Package 2> /dev/null)" = 'hestia' ] || return 0
+	marker=$(dpkg-deb -f "$deb" Vylaris-Edition 2> /dev/null | tr -d '[:space:]')
+	[ -n "$marker" ] && return 0
+	refused+=("$deb")
+}
+
+if [ $# -gt 0 ]; then
+	for deb in "$@"; do
+		check_deb "$deb"
+	done
+else
+	while IFS= read -r deb || [ -n "$deb" ]; do
+		check_deb "$deb"
+	done
+fi
+
+[ "${#refused[@]}" -eq 0 ] && exit 0
+
+app_name=$(sed -n "s/^APP_NAME='\(.*\)'\$/\1/p" /usr/local/hestia/conf/hestia.conf 2> /dev/null | head -n1)
+app_name="${app_name:-${APP_NAME:-VylarisSpace}}"
+for deb in "${refused[@]}"; do
+	echo "REFUSED: $deb is a package named hestia that is not a ${app_name} package (no Vylaris-Edition field)." >&2
+done
+echo "It would replace ${app_name} with the upstream panel and remove the themes, logos and update scripts. Nothing was changed." >&2
+echo "If you really want this, run: touch $allow_file   and repeat the installation." >&2
+exit 1

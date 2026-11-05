@@ -16,6 +16,10 @@ Please do not open a public issue or discuss the problem in public before a fix 
 | ------- | ------------------ |
 | Latest  | :white_check_mark: |
 
+## Update protection
+
+A package guard refuses a `hestia` package that is not a VylarisSpace package (`dpkg -i` and apt). Its limits are listed in [VYLARIS-PACKAGING.md](VYLARIS-PACKAGING.md#154-the-package-guard): servers need the first guarded build, and a foreign package that ships its own `prerm` exiting 0 passes `dpkg -i`. Reports about a way around the guard are welcome through the channel above.
+
 ## Qualifying vulnerabilities
 
 ### Vulnerabilities we really care about

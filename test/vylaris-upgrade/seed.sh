@@ -37,6 +37,12 @@ run v-change-sys-config-value DISABLE_IP_CHECK 'yes'
 echo "  hand edit of conf/hestia.conf (non-default BACKUP_GZIP, one key the panel does not know)"
 sed -i "s/^BACKUP_GZIP=.*/BACKUP_GZIP='7'/" "$H/conf/hestia.conf"
 printf "OWNER_NOTE='written by hand, must survive'\n" >> "$H/conf/hestia.conf"
+echo "  values that contain a hash sign (an SMTP password style value must not be cut at the #)"
+# SERVER_SMTP_PASSWD exists in a fresh hestia.conf (empty): the admin replaces the value
+sed -i "s/^SERVER_SMTP_PASSWD=.*/SERVER_SMTP_PASSWD='pa#ss'/" "$H/conf/hestia.conf"
+printf "OWNER_HASH_NOTE='a#b # c&d|e'\n" >> "$H/conf/hestia.conf"
+echo "  a key that appears twice (a hand edit gone wrong): the upgrade merges it, the last value wins"
+printf "OWNER_DUP='first'\nOWNER_DUP='last#value|with&chars'\n" >> "$H/conf/hestia.conf"
 echo "  /etc/hestiacp/local.conf (the file the header of hestia.conf tells the admin to use)"
 cat > /etc/hestiacp/local.conf << 'EOL'
 # local settings of the owner

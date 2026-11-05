@@ -1,5 +1,18 @@
 #!/bin/bash
 
+# Run the upgrade procedure only when dpkg configures the package. dpkg also calls the
+# old postinst with abort-upgrade, abort-remove or abort-deconfigure after a failed or
+# refused upgrade, that must not start the upgrade again. Nothing in the repository
+# calls this script itself (the only callers are dpkg and apt, always with "configure").
+case "${1:-}" in
+	configure) ;;
+	*) exit 0 ;;
+esac
+
+# The override for a deliberate foreign hestia package is one-shot: a VylarisSpace package that is
+# configured again brings the guard back, so a leftover file must not keep it switched off.
+rm -f /etc/hestiacp/allow-foreign-hestia
+
 if [ ! -e "/usr/local/hestia/data/users/" ]; then
 	exit
 fi
@@ -65,6 +78,10 @@ upgrade_refresh_config | tee -a $LOG
 # Execute version-specific upgrade scripts
 upgrade_start_routine | tee -a $LOG
 
+# Re-apply the whitelabel logos first: local copies only, so they come back even when a
+# later step that needs the network runs into a problem
+update_whitelabel_logo | tee -a $LOG
+
 # Run upgrades of dependencies
 source_conf "$HESTIA_BACKUP/upgrade.conf"
 
@@ -100,9 +117,6 @@ upgrade_phppgadmin | tee -a $LOG
 
 # Upgrade blackblaze-cli-took if applicable
 upgrade_b2_tool | tee -a $LOG
-
-# update whitelabel logo's
-update_whitelabel_logo | tee -a $LOG
 
 # Set new version number in hestia.conf
 upgrade_set_version $new_version

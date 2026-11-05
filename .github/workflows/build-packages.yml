@@ -142,6 +142,9 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Check the upgrade steps against the package version
+        run: bash test/vylaris-guard/check-version-steps.sh
+
       - name: Setup Node
         uses: actions/setup-node@v7
         with:
@@ -222,6 +225,44 @@ jobs:
             cat "$out/SHA256SUMS"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check the package guard
+        env:
+          DEB: ${{ runner.temp }}/out/${{ steps.collect.outputs.deb }}
+        run: |
+          set -euo pipefail
+          # The marker that the guard looks for (prerm, bin/v-check-package-source, repo-publish.sh)
+          edition="$(dpkg-deb -f "$DEB" Vylaris-Edition)"
+          if [ "$edition" != 'VylarisSpace' ]; then
+            echo "::error::Vylaris-Edition of the package is '$edition', expected VylarisSpace"
+            exit 1
+          fi
+          # prerm in the control data, executable
+          ctl="$RUNNER_TEMP/deb-control"
+          rm -rf "$ctl"
+          dpkg-deb -e "$DEB" "$ctl"
+          for s in preinst postinst prerm; do
+            if [ ! -x "$ctl/$s" ]; then
+              echo "::error::DEBIAN/$s is missing or not executable"
+              exit 1
+            fi
+          done
+          # The apt hook and its checker are part of the package (dpkg removes them with it)
+          dpkg-deb -c "$DEB" > "$RUNNER_TEMP/contents-guard.txt"
+          grep -q '^-rw-r--r-- root/root .* \./etc/apt/apt\.conf\.d/90vylarisspace-guard$' "$RUNNER_TEMP/contents-guard.txt" \
+            || { echo "::error::/etc/apt/apt.conf.d/90vylarisspace-guard is missing from the package or has the wrong mode"; exit 1; }
+          grep -q '^-rwxr-xr-x root/root .* \./usr/local/hestia/bin/v-check-package-source$' "$RUNNER_TEMP/contents-guard.txt" \
+            || { echo "::error::bin/v-check-package-source is missing from the package or has the wrong mode"; exit 1; }
+          # Only root owns files in the package
+          if awk '$2 != "root/root"' "$RUNNER_TEMP/contents-guard.txt" | grep -q .; then
+            echo "::error::the package contains files that are not owned by root"
+            awk '$2 != "root/root"' "$RUNNER_TEMP/contents-guard.txt" | head
+            exit 1
+          fi
+          # The hook must call the checker and must not break apt when the checker is gone
+          dpkg-deb --fsys-tarfile "$DEB" | tar -xOf - ./etc/apt/apt.conf.d/90vylarisspace-guard \
+            | grep -q 'DPkg::Pre-Install-Pkgs.*\[ ! -x /usr/local/hestia/bin/v-check-package-source \]'
+          echo "package guard: marker, prerm, apt hook and checker present"
 
       - name: Upload the package
         uses: actions/upload-artifact@v4

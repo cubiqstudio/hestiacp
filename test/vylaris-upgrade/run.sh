@@ -9,7 +9,11 @@
 #      database, mail, dns, cron, ssh key, a firewall rule, a backup
 #   5. snapshot.sh (before), publish B, close the network except the repo, run
 #      bin/v-update-sys-vylaris install under strace, snapshot.sh (after)
-#   6. compare.sh, list of every network destination, README-style summary
+#   6. compare.sh (strict), assert.sh, list of every network destination, README-style summary
+#   7. guard phase on the same server: a foreign hestia package (dpkg -i and apt-get install) must be
+#      refused and leave the server as it was; then a second own update (revision 102) must still
+#      work; then, in throw-away copies of the server, the deliberate override must let the foreign
+#      package in (file /etc/hestiacp/allow-foreign-hestia, variable VYLARIS_ALLOW_FOREIGN_HESTIA)
 #
 # Usage: run.sh [options]
 #   --work DIR          work and result directory (default /tmp/vylaris-upgrade-test)
@@ -21,6 +25,7 @@
 #                       (shows what it does on a normal server, e.g. the Cloudflare IP list).
 #                       Results go to DIR/result-open instead of DIR/result.
 #   --no-seed           skip seed.sh (the comparison then only shows the installer defaults)
+#   --no-guard          skip the guard phase (step 7)
 #   --rebuild-images    rebuild the docker images even if they exist
 #   -h, --help
 # Environment: PREFIX (name prefix of containers/network, default vyup),
@@ -41,6 +46,7 @@ ADMIN='admin'
 DO_SEED=1
 NETMODE=closed
 REBUILD_IMAGES=0
+DO_GUARD=1
 HOSTNAME_FQDN=server.vylaris.test
 REPO_HOST=repo.vylaris.test
 INSTALL_ARGS="--apache no --phpfpm yes --multiphp no --vsftpd no --proftpd no --named yes --mysql yes --postgresql no --exim yes --dovecot yes --clamav no --spamassassin no --iptables yes --fail2ban no --quota no --api yes"
@@ -76,12 +82,16 @@ while [ $# -gt 0 ]; do
 			NETMODE=open
 			shift
 			;;
+		--no-guard)
+			DO_GUARD=0
+			shift
+			;;
 		--rebuild-images)
 			REBUILD_IMAGES=1
 			shift
 			;;
 		-h | --help)
-			sed -n '2,32p' "$0"
+			sed -n '2,36p' "$0"
 			exit 0
 			;;
 		*)
@@ -257,6 +267,7 @@ echo "installed: $(sx dpkg-query -W -f='${Package} ${Version}\n' hestia hestia-n
 docker cp "$HERE/seed.sh" "$SYS:/root/seed.sh"
 docker cp "$HERE/snapshot.sh" "$SYS:/root/snapshot.sh"
 docker cp "$HERE/guest-update.sh" "$SYS:/root/guest-update.sh"
+docker cp "$HERE/guard-phase.sh" "$SYS:/root/guard-phase.sh"
 if [ "$DO_SEED" -eq 1 ]; then
 	say "seed.sh"
 	sx bash /root/seed.sh > "$LOG/seed.log" 2>&1
@@ -288,7 +299,8 @@ docker exec "$REPOC" tail -n +"$((ACCESS_BEFORE + 1))" /var/log/nginx/repo-acces
 "$HERE/compare.sh" --pkg-tsv "$DEB_A" > "$RES/pkg-A.tsv"
 "$HERE/compare.sh" --pkg-tsv "$DEB_B" > "$RES/pkg-B.tsv"
 NETMODE=$NETMODE "$HERE/net-summary.sh" "$RES/upd/connect.trace" "$RES/dnsmasq.log" "$REPO_IP" "$RES/repo-access-update.log" > "$RES/network.txt"
-"$HERE/compare.sh" "$RES/snap-before" "$RES/snap-after" --pkg-a "$RES/pkg-A.tsv" --pkg-b "$RES/pkg-B.tsv" > "$RES/compare.txt"
+# strict: the update runs no upgrade step and no user rebuild, so volatile fields must not differ either
+"$HERE/compare.sh" "$RES/snap-before" "$RES/snap-after" --pkg-a "$RES/pkg-A.tsv" --pkg-b "$RES/pkg-B.tsv" --strict > "$RES/compare.txt"
 cmp_rc=$?
 
 {
@@ -308,4 +320,112 @@ cat "$RES/network.txt"
 	echo "the update command itself failed (exit $upd_rc), see $RES/upd/update.log"
 	exit 2
 }
-exit "$cmp_rc"
+
+# ------------------------------------------------------------------ explicit assertions
+say "assert.sh: what must hold after the update"
+"$HERE/assert.sh" "$RES" "$NETMODE" | tee "$RES/assert.txt"
+assert_rc=${PIPESTATUS[0]}
+
+# ------------------------------------------------------------------ guard phase
+guard_rc=0
+guard_fail=0
+if [ "$DO_GUARD" -eq 1 ] && [ "$NETMODE" = closed ]; then
+	GD=$RES/guard
+	XD=$WORK/debs-extra
+	mkdir -p "$GD" "$XD"
+	rm -f "$XD"/*.deb
+	B_VER=$(dpkg-deb -f "$DEB_B" Version)
+	SFX=${B_VER#*+}
+	FOREIGN_VER="1.10.6-1+$SFX"
+	C_VER=${B_VER/-101+/-102+}
+	"$HERE/repack-deb.sh" foreign "$DEB_B" "$XD/foreign.deb" "$FOREIGN_VER" || die "repack foreign failed"
+	"$HERE/repack-deb.sh" own "$DEB_B" "$XD/hestia_${C_VER}_amd64.deb" "$C_VER" || die "repack own failed"
+
+	say "guard phase 1: foreign hestia $FOREIGN_VER over the installed $B_VER (dpkg -i, apt-get install)"
+	sx mkdir -p /root/guard
+	docker cp "$XD/foreign.deb" "$SYS:/root/guard/foreign.deb"
+	sx bash /root/guard-phase.sh > "$GD/guard-phase.log" 2>&1
+	echo "guard-phase.sh exit status $?"
+	grep -E '^(PASS|FAIL|###|guard phase)|REFUSED|exit [0-9]+\]' "$GD/guard-phase.log" | sed 's/^/  /'
+	sx bash /root/snapshot.sh /root/snap-guard guard > /dev/null || die "snapshot failed"
+	docker cp "$SYS:/root/snap-guard" "$RES/snap-guard" > /dev/null
+	docker cp "$SYS:/root/guard/." "$GD/raw" > /dev/null
+	"$HERE/compare.sh" "$RES/snap-after" "$RES/snap-guard" --strict > "$GD/compare-after-refusals.txt"
+	g_cmp1=$?
+	echo "compare snapshot after the update -> after the refused attempts: $(grep -m1 'RESULT:' "$GD/compare-after-refusals.txt")"
+	echo "                                                                 $(grep -A1 -m1 'RESULT:' "$GD/compare-after-refusals.txt" | tail -1)"
+
+	say "guard phase 2: recovery, a second own update (revision 102) through the same channel"
+	"$HERE/repo.sh" publish "$STATE" "$XD/hestia_${C_VER}_amd64.deb" > "$LOG/publish-C.log" 2>&1 || {
+		cat "$LOG/publish-C.log"
+		die "publish C failed"
+	}
+	grep -E 'published|signed by' "$LOG/publish-C.log"
+	sx bash /root/guest-update.sh "$REPO_IP" /root/upd2 closed > "$LOG/guest-update2.log" 2>&1
+	upd2_rc=$(docker exec "$SYS" cat /root/upd2/update.rc 2> /dev/null || echo missing)
+	echo "second update exit status: $upd2_rc"
+	sx bash /root/snapshot.sh /root/snap-c recovery > /dev/null || die "snapshot failed"
+	docker cp "$SYS:/root/upd2" "$GD/upd2" > /dev/null
+	docker cp "$SYS:/root/snap-c" "$RES/snap-recovery" > /dev/null
+	# deb B and deb C have the same files, so the package file lists are the same
+	# (compare.sh tells its two package lists apart by file name, so B is passed as two files)
+	cp "$RES/pkg-B.tsv" "$RES/pkg-C.tsv"
+	"$HERE/compare.sh" "$RES/snap-guard" "$RES/snap-recovery" --pkg-a "$RES/pkg-B.tsv" --pkg-b "$RES/pkg-C.tsv" --strict > "$GD/compare-after-second-update.txt"
+	g_cmp2=$?
+	echo "compare after the refused attempts -> after the second update: $(grep -m1 'RESULT:' "$GD/compare-after-second-update.txt")"
+	echo "                                                              $(grep -A1 -m1 'RESULT:' "$GD/compare-after-second-update.txt" | tail -1)"
+	{
+		g2() { # description, command...
+			local d=$1
+			shift
+			if "$@" > /dev/null 2>&1; then echo "PASS: $d"; else echo "FAIL: $d"; fi
+		}
+		echo "### recovery checks"
+		g2 "second update exited 0" test "$upd2_rc" = 0
+		g2 "installed hestia is $C_VER" grep -qxF "ii hestia $C_VER" "$RES/snap-recovery/dpkg.txt"
+		g2 "second update ran no version step" bash -c "! grep -Eqi 'applying patches' '$GD/upd2/update.log'"
+		g2 "second update started no v-rebuild-* program" bash -c "! grep -Eq 'execve\\([^)]*v-rebuild-' '$GD/upd2/connect.trace'"
+		g2 "panel login page 200 after the second update" grep -q '^panel login page: 200' "$RES/snap-recovery/health.txt"
+		g2 "guard still installed (hook file, checker, prerm)" sx bash -c 'test -f /etc/apt/apt.conf.d/90vylarisspace-guard && test -x /usr/local/hestia/bin/v-check-package-source && test -x /var/lib/dpkg/info/hestia.prerm'
+		g2 "foreign package is still refused after the second update" sx bash -c '! dpkg -i /root/guard/foreign.deb'
+		g2 "compare after the refused attempts: 0 unexpected" test "$g_cmp1" -eq 0
+		g2 "compare after the second update: 0 unexpected" test "$g_cmp2" -eq 0
+		g2 "hestia.conf keys after the second update equal the keys after the first (SERVER_SMTP_PASSWD, OWNER_NOTE ...)" diff "$RES/snap-after/hestia-conf.kv" "$RES/snap-recovery/hestia-conf.kv"
+	} > "$GD/recovery.log" 2>&1
+	sed 's/^/  /' "$GD/recovery.log"
+
+	say "guard phase 3: deliberate override, in throw-away copies of the server (docker commit, no systemd)"
+	OVIMG=vylaris-upgrade-override-copy
+	docker commit "$SYS" "$OVIMG" > /dev/null || die "docker commit failed"
+	: > "$GD/override.log"
+	for combo in "file dpkg" "env apt"; do
+		set -- $combo
+		docker run --rm --network none --entrypoint bash -v "$XD:/guard:ro" -v "$HERE/guard-override.sh:/guard-override.sh:ro" "$OVIMG" \
+			/guard-override.sh "$1" "$2" >> "$GD/override.log" 2>&1
+		echo "override ($1/$2) exit status $?"
+	done
+	docker rmi "$OVIMG" > /dev/null 2>&1
+	grep -E '^(PASS|FAIL|override)' "$GD/override.log" | sed 's/^/  /'
+
+	guard_fail=$(cat "$GD"/guard-phase.log "$GD"/recovery.log "$GD"/override.log | grep -c '^FAIL')
+	guard_pass=$(cat "$GD"/guard-phase.log "$GD"/recovery.log "$GD"/override.log | grep -c '^PASS')
+	echo
+	echo "guard phase total: $guard_pass PASS, $guard_fail FAIL"
+	[ "$guard_fail" -eq 0 ] || guard_rc=1
+elif [ "$DO_GUARD" -eq 1 ]; then
+	echo "guard phase skipped (open network run)"
+fi
+
+echo
+echo "################################ RESULT ################################"
+echo "update exit status      : $upd_rc"
+echo "compare.sh (strict)     : $(grep -m1 'RESULT:' "$RES/compare.txt")"
+echo "                          $(grep -A1 -m1 'RESULT:' "$RES/compare.txt" | tail -1)"
+echo "assert.sh               : $(tail -1 "$RES/assert.txt")"
+[ "$DO_GUARD" -eq 1 ] && [ "$NETMODE" = closed ] && echo "guard phase             : $guard_pass PASS, $guard_fail FAIL"
+echo "########################################################################"
+final=0
+[ "$cmp_rc" -eq 0 ] || final=1
+[ "$assert_rc" -eq 0 ] || final=1
+[ "$guard_rc" -eq 0 ] || final=1
+exit "$final"

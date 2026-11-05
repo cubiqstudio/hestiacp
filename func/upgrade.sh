@@ -459,18 +459,48 @@ upgrade_refresh_config() {
 	source_conf "/usr/local/hestia/conf/hestia.conf"
 }
 
+# Base version of the installed package: dpkg version without the package
+# revision suffix and without pre-release tags,
+# 1.10.5-101+ubuntu24.04~alpha becomes 1.10.5
+upgrade_base_version() {
+	local v="${1-}"
+	if [ -z "$v" ]; then
+		v="$(dpkg -l 2> /dev/null | awk '$2=="hestia" { print $3 }')"
+	fi
+	v="$(echo "$v" | sed -E 's/-[0-9]{1,}\+[a-z0-9\.]{1,}//')"
+	echo "${v%%~*}"
+}
+
 upgrade_start_routine() {
 	# Parse version numbers for comparison
 	function check_version { echo "$@" | awk -F. '{ printf("%d%03d%03d%03d\n", $1,$2,$3,$4); }'; }
 
+	# Remember if a pre-release was involved before the tag is removed below
+	local prerelease_involved="no"
+	if [[ "$VERSION" == *"~"* ]] || [[ "$new_version" == *"~"* ]]; then
+		prerelease_involved="yes"
+	fi
+
 	# Remove pre-release designation from version number for upgrade scripts
 	VERSION=$(echo "$VERSION" | sed "s/~\([a-zA-Z0-9].*\)//g")
 
+	# Upgrade steps newer than the base version of the installed package are never run.
+	# The own package revisions (1.10.5-101, 1.10.5-102, ...) keep the base version, so a
+	# step for a later upstream release that is already part of the tree must wait until
+	# the package base version reaches it.
+	local base_version
+	base_version="$(upgrade_base_version "$new_version")"
+
 	# Get list of all available version steps and create array
-	upgrade_steps=$(ls -v $HESTIA/install/upgrade/versions/*.sh)
-	for script in $upgrade_steps; do
-		declare -a available_versions
-		available_versions+=($(echo $script | sed "s|/usr/local/hestia/install/upgrade/versions/||g" | sed "s|.sh||g"))
+	available_versions=()
+	local script
+	for script in $(printf "%s\n" "$HESTIA"/install/upgrade/versions/*.sh | sort -V); do
+		script="${script##*/}"
+		script="${script%.sh}"
+		if [ -n "$base_version" ] && [ "$(check_version "$script")" -gt "$(check_version "$base_version")" ]; then
+			continue
+		fi
+		available_versions+=("$script")
 	done
 
 	# Define variables for accessing supported versions
@@ -480,11 +510,11 @@ upgrade_start_routine() {
 	latest_version=$(printf "%s\n" "$all_versions" | sort -V | tail -n1)
 
 	# Check for supported versions and process necessary upgrade steps
-	if [ $(check_version $latest_version) -gt $(check_version $VERSION) ]; then
+	if [ -n "$latest_version" ] && [ "$(check_version "$latest_version")" -gt "$(check_version "$VERSION")" ]; then
 		for version_step in "${available_versions[@]}"; do
-			if [ $(check_version $VERSION) -lt $(check_version "$version_step") ]; then
+			if [ "$(check_version "$VERSION")" -lt "$(check_version "$version_step")" ]; then
 				upgrade_step_message
-				source $HESTIA/install/upgrade/versions/$version_step.sh
+				source "$HESTIA/install/upgrade/versions/$version_step.sh"
 			fi
 		done
 		upgrade_set_version "$VERSION"
@@ -494,8 +524,11 @@ upgrade_start_routine() {
 		echo "[ ! ] The latest version of ${APP_NAME:-VylarisSpace} is already installed."
 		echo "      Verifying configuration..."
 		echo ""
-		if [ -e "$HESTIA/install/upgrade/versions/$VERSION.sh" ]; then
-			source $HESTIA/install/upgrade/versions/$VERSION.sh
+		# The step of the installed version only runs again when a pre-release is involved
+		# (development snapshots keep their version number). A new package revision of a
+		# released version must not trigger the rebuild or template switches of that step.
+		if [ "$prerelease_involved" = "yes" ] && [ -e "$HESTIA/install/upgrade/versions/$VERSION.sh" ]; then
+			source "$HESTIA/install/upgrade/versions/$VERSION.sh"
 		fi
 		VERSION="$new_version"
 		upgrade_set_version "$VERSION"
@@ -516,15 +549,23 @@ upgrade_b2_tool() {
 			echo "[ * ] Backblaze CLI tool is up to date ($b2_v)..."
 		else
 			echo "[ * ] Upgrading Backblaze CLI tool to version $b2_v..."
-			rm $b2cli
-			wget -O $b2cli $b2lnk > /dev/null 2>&1
-			chmod +x $b2cli > /dev/null 2>&1
-			if [ ! -f "$b2cli" ]; then
-				echo "Error: Binary download failed, b2 doesn't work as expected."
-				exit 3
+			# Download next to the old tool first and replace it only after the new one is
+			# complete. A failed download keeps the old tool and never stops the upgrade.
+			b2tmp="$(mktemp "$(dirname "$b2cli")/.b2.XXXXXX" 2> /dev/null)" || {
+				echo "[ ! ] Warning: Backblaze CLI tool not upgraded (no temporary file), keeping version $b2_version."
+				return 0
+			}
+			if wget --quiet --tries=3 --timeout=60 -O "$b2tmp" "$b2lnk" && [ -s "$b2tmp" ] \
+				&& [ "$(head -c 4 "$b2tmp" 2> /dev/null | tail -c 3)" = "ELF" ] \
+				&& chmod 755 "$b2tmp" && mv -f "$b2tmp" "$b2cli"; then
+				echo "[ * ] Backblaze CLI tool upgraded to version $b2_v."
+			else
+				rm -f "$b2tmp"
+				echo "[ ! ] Warning: download of the Backblaze CLI tool $b2_v failed, keeping version $b2_version."
 			fi
 		fi
 	fi
+	return 0
 }
 
 upgrade_cloudflare_ip() {
@@ -533,21 +574,29 @@ upgrade_cloudflare_ip() {
 
 		if [ -n "$cf_ips" ] && [ "$(echo "$cf_ips" | jq -r '.success//""')" = "true" ]; then
 			cf_inc="/etc/nginx/conf.d/cloudflare.inc"
+			# Write a temporary file first so that an error never leaves a cut off list
+			cf_tmp="$(mktemp 2> /dev/null)" || return 0
 
 			echo "[ * ] Updating Cloudflare IP Ranges for NGINX..."
-			echo "# Cloudflare IP Ranges" > $cf_inc
-			echo "" >> $cf_inc
-			echo "# IPv4" >> $cf_inc
+			echo "# Cloudflare IP Ranges" > "$cf_tmp"
+			echo "" >> "$cf_tmp"
+			echo "# IPv4" >> "$cf_tmp"
 			for ipv4 in $(echo "$cf_ips" | jq -r '.result.ipv4_cidrs[]//""' | sort); do
-				echo "set_real_ip_from $ipv4;" >> $cf_inc
+				echo "set_real_ip_from $ipv4;" >> "$cf_tmp"
 			done
-			echo "" >> $cf_inc
-			echo "# IPv6" >> $cf_inc
+			echo "" >> "$cf_tmp"
+			echo "# IPv6" >> "$cf_tmp"
 			for ipv6 in $(echo "$cf_ips" | jq -r '.result.ipv6_cidrs[]//""' | sort); do
-				echo "set_real_ip_from $ipv6;" >> $cf_inc
+				echo "set_real_ip_from $ipv6;" >> "$cf_tmp"
 			done
-			echo "" >> $cf_inc
-			echo "real_ip_header CF-Connecting-IP;" >> $cf_inc
+			echo "" >> "$cf_tmp"
+			echo "real_ip_header CF-Connecting-IP;" >> "$cf_tmp"
+			if grep -q '^set_real_ip_from ' "$cf_tmp"; then
+				cat "$cf_tmp" > "$cf_inc"
+			else
+				echo "[ ! ] Warning: no Cloudflare IP ranges received, keeping the current list."
+			fi
+			rm -f "$cf_tmp"
 		fi
 	fi
 }
@@ -566,9 +615,16 @@ upgrade_phppgadmin() {
 			# Display upgrade information
 			echo "[ * ] Upgrading phppgadmin to version $pga_v..."
 			[ -d /usr/share/phppgadmin ] || mkdir -p /usr/share/phppgadmin
-			# Download latest phpMyAdmin release
-			wget --retry-connrefused --quiet https://github.com/hestiacp/phppgadmin/releases/download/v$pga_v/phppgadmin-v$pga_v.tar.gz
-			tar xzf phppgadmin-v$pga_v.tar.gz -C /usr/share/phppgadmin/
+			# Download latest phpPgAdmin release, a failed download keeps the installed version
+			pga_tmp="$(mktemp -d 2> /dev/null)" || return 0
+			if ! wget --retry-connrefused --quiet -O "$pga_tmp/phppgadmin.tar.gz" https://github.com/hestiacp/phppgadmin/releases/download/v$pga_v/phppgadmin-v$pga_v.tar.gz \
+				|| ! tar tzf "$pga_tmp/phppgadmin.tar.gz" > /dev/null 2>&1; then
+				echo "[ ! ] Warning: download of phppgadmin $pga_v failed, keeping version $pga_release."
+				rm -rf "$pga_tmp"
+				return 0
+			fi
+			tar xzf "$pga_tmp/phppgadmin.tar.gz" -C /usr/share/phppgadmin/
+			rm -rf "$pga_tmp"
 
 			if ! version_ge "$pga_release" "7.14.0"; then
 				cp -f $HESTIA_INSTALL_DIR/pga/config.inc.php /etc/phppgadmin/
@@ -576,8 +632,6 @@ upgrade_phppgadmin() {
 			if [ ! -L /usr/share/phppgadmin/conf/config.inc.php ]; then
 				ln -s /etc/phppgadmin/config.inc.php /usr/share/phppgadmin/conf
 			fi
-
-			rm -f phppgadmin-v$pga_v.tar.gz
 		fi
 	fi
 }
@@ -602,17 +656,21 @@ upgrade_phpmyadmin() {
 			echo "[ * ] Upgrading phpMyAdmin to version $pma_v..."
 			[ -d /usr/share/phpmyadmin ] || mkdir -p /usr/share/phpmyadmin
 
-			# Download latest phpMyAdmin release
-			wget --quiet https://files.phpmyadmin.net/phpMyAdmin/$pma_v/phpMyAdmin-$pma_v-all-languages.tar.gz
-
-			# Unpack files
-			tar xzf phpMyAdmin-$pma_v-all-languages.tar.gz
+			# Download and unpack in a temporary folder, a failed download keeps the installed version
+			pma_tmp="$(mktemp -d 2> /dev/null)" || return 0
+			if ! wget --quiet -O "$pma_tmp/pma.tar.gz" https://files.phpmyadmin.net/phpMyAdmin/$pma_v/phpMyAdmin-$pma_v-all-languages.tar.gz \
+				|| ! tar xzf "$pma_tmp/pma.tar.gz" -C "$pma_tmp" 2> /dev/null \
+				|| [ ! -d "$pma_tmp/phpMyAdmin-$pma_v-all-languages" ]; then
+				echo "[ ! ] Warning: download of phpMyAdmin $pma_v failed, keeping version $pma_version."
+				rm -rf "$pma_tmp"
+				return 0
+			fi
 
 			# Delete file to prevent error
 			rm -rf /usr/share/phpmyadmin/doc/html
 
 			# Overwrite old files
-			cp -rf phpMyAdmin-$pma_v-all-languages/* /usr/share/phpmyadmin
+			cp -rf "$pma_tmp/phpMyAdmin-$pma_v-all-languages"/* /usr/share/phpmyadmin
 
 			# Set config and log directory
 			sed -i "s|'configFile' => ROOT_PATH . 'config.inc.php',|'configFile' => '/etc/phpmyadmin/config.inc.php',|g" /usr/share/phpmyadmin/libraries/vendor_config.php
@@ -634,8 +692,7 @@ upgrade_phpmyadmin() {
 			chown -R root:hestiamail /etc/phpmyadmin/
 
 			# Clean up source files
-			rm -fr phpMyAdmin-$pma_v-all-languages
-			rm -f phpMyAdmin-$pma_v-all-languages.tar.gz
+			rm -rf "$pma_tmp"
 		fi
 	fi
 }

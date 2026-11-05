@@ -17,3 +17,87 @@ fi
 
 # Validate version number and replace if different
 HESTIA_V=$(dpkg -s hestia | grep -i version | awk '{ print $2 }')
+
+# Save what the admin changed in shipped files. dpkg replaces every file of the package
+# and has no conffiles here, so an edit of a shipped file is gone after the upgrade.
+# The new package is not unpacked yet, so "dpkg --verify" still compares against the
+# installed version (dpkg already marks it as half-installed at this point).
+# Best effort only: nothing in here may ever stop the installation.
+vylaris_save_modified_files() {
+	set +e
+	local max_files=500 max_file_size=1048576 max_total_size=20971520 min_free_kb=204800
+	local stamp backup_root backup_dir verify_out filtered line path size total=0 count=0 free_kb
+
+	command -v dpkg > /dev/null 2>&1 || return 0
+
+	backup_root="/root/hst_backups"
+	stamp="$(date +%d%m%Y%H%M%S)"
+	backup_dir="$backup_root/modified-shipped-files-$stamp"
+	verify_out="$(mktemp 2> /dev/null)" || return 0
+	filtered="$(mktemp 2> /dev/null)" || {
+		rm -f "$verify_out"
+		return 0
+	}
+
+	if command -v timeout > /dev/null 2>&1; then
+		timeout 120 dpkg --verify hestia > "$verify_out" 2> /dev/null
+	else
+		dpkg --verify hestia > "$verify_out" 2> /dev/null
+	fi
+
+	# Leave out what is rewritten anyway: the whitelabel copies of logos and favicon
+	# (re-applied from web/images/custom after the upgrade), the generated PHP vendor
+	# folders and the temporary quota script
+	while IFS= read -r line; do
+		path="/${line#*/}"
+		case "$path" in
+			/usr/local/hestia/web/images/logo*.svg | /usr/local/hestia/web/images/logo*.png) continue ;;
+			/usr/local/hestia/web/images/favicon.png | /usr/local/hestia/web/favicon.ico) continue ;;
+			/usr/local/hestia/web/inc/vendor/* | /usr/local/hestia/web/src/vendor/*) continue ;;
+			/usr/local/hestia/bin/v-update-quotas-after-reboot.sh) continue ;;
+		esac
+		printf '%s\n' "$line" >> "$filtered"
+	done < "$verify_out"
+
+	if [ -s "$filtered" ]; then
+		[ -d "$backup_root" ] || mkdir -p "$backup_root" 2> /dev/null
+		free_kb="$(df -Pk "$backup_root" 2> /dev/null | awk 'NR==2 { print $4 }')"
+		if mkdir -p "$backup_dir" 2> /dev/null; then
+			chmod 700 "$backup_dir" 2> /dev/null
+			cp -f "$filtered" "$backup_dir/dpkg-verify.txt" 2> /dev/null
+			# Only files whose content changed and that still exist can be copied
+			if [ "${free_kb:-0}" -ge "$min_free_kb" ] 2> /dev/null; then
+				while IFS= read -r line; do
+					# "missing" lines and files with unchanged content have no 5 in the third column
+					case "${line:0:9}" in
+						??5*) ;;
+						*) continue ;;
+					esac
+					path="/${line#*/}"
+					[ -f "$path" ] && [ ! -L "$path" ] || continue
+					size="$(stat -c %s "$path" 2> /dev/null)" || continue
+					if [ "$size" -gt "$max_file_size" ] || [ $((total + size)) -gt "$max_total_size" ] || [ "$count" -ge "$max_files" ]; then
+						echo "not copied (size limit): $path" >> "$backup_dir/skipped.txt"
+						continue
+					fi
+					mkdir -p "$backup_dir$(dirname "$path")" 2> /dev/null \
+						&& cp -p "$path" "$backup_dir$path" 2> /dev/null \
+						&& total=$((total + size)) && count=$((count + 1))
+				done < "$filtered"
+			else
+				echo "not copied (less than 200 MB free in $backup_root)" > "$backup_dir/skipped.txt"
+			fi
+			echo "Shipped files changed on this server are listed in $backup_dir (the upgrade replaces them with the new version)."
+		fi
+	fi
+	rm -f "$verify_out" "$filtered"
+	return 0
+}
+
+case "${1:-upgrade}" in
+	upgrade | install)
+		vylaris_save_modified_files 2> /dev/null || true
+		;;
+esac
+
+exit 0

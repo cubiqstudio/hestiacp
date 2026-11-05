@@ -7,6 +7,7 @@ updated from it by the normal system `apt upgrade` (section 8). Building those t
 still a plan (section 13).
 
 What has been verified so far, and what has not, is listed in [Verification status](#verification-status).
+What an update changes on a server and what it keeps is in [section 15](#15-what-an-update-touches).
 
 ## Why this exists
 
@@ -32,6 +33,8 @@ What has been verified so far, and what has not, is listed in [Verification stat
 | Installers (refuse without a package source) | `install/hst-install.sh`, `install/hst-install-debian.sh`, `install/hst-install-ubuntu.sh`                                                       |
 | Own update path                              | `bin/v-update-sys-vylaris`, `bin/v-add-cron-vylaris-autoupdate`, `bin/v-delete-cron-vylaris-autoupdate`, `web/update/vylaris/`, the Updates page |
 | Configuration keys                           | `UPSTREAM_UPDATES` (stays `no`), `VYLARIS_UPDATES` (`yes` when a repository was configured)                                                      |
+| Package guard (marker, prerm, apt hook)      | `src/deb/hestia/prerm`, `src/deb/hestia/90vylarisspace-guard`, `bin/v-check-package-source`, `test/vylaris-guard/` (section 15.4)                |
+| What an update touches, upgrade tests        | Section 15, `func/upgrade.sh`, `test/vylaris-upgrade/`, `test/vylaris-upgrade-unit/`                                                             |
 | CI build and publish                         | `.github/workflows/build-packages.yml`                                                                                                           |
 
 ## 1. What to build
@@ -87,7 +90,9 @@ Rules to decide and then never change:
 3. Never go below upstream. When upstream releases 1.10.6 and it is merged, the fork's package becomes
    `1.10.6-100+...`.
 4. Own migration steps that are not part of an upstream release can use a fourth component
-   (`1.10.5.1`): the upgrade loop in `func/upgrade.sh` compares four numeric fields. Check this with a
+   (`1.10.5.1`): the upgrade loop in `func/upgrade.sh` compares four numeric fields. A step runs only
+   when it is not newer than the base version of the package, so `Version:` in
+   `src/deb/hestia/control` has to be raised to `1.10.5.1` as well (section 15.3). Check this with a
    test upgrade before relying on it.
 5. Epoch: do not add one. An epoch (`1:1.10.5-...`) can never be removed again. It is only needed if the
    fork wants to renumber below upstream. Decide this before the first public build; the recommendation
@@ -115,7 +120,8 @@ Rules to decide and then never change:
      server (it rewrites the source list and the pin). If only the source list is changed, the pin no
      longer matches and `v-update-sys-vylaris` fails closed (`pin_ok=no`).
    - The pins steer the candidate version and upgrades. An explicit `apt-get install hestia=VERSION`
-     still installs from a blocked source (apt behaviour), as does `dpkg -i`.
+     still installs from a blocked source (apt behaviour), as does `dpkg -i`. The package guard
+     (section 15.4) refuses such a package when it is not a VylarisSpace package.
 
    `apt-mark hold hestia` is not enough, the legacy upstream update script runs `apt-get install hestia`
    explicitly. The details and the checks that were run are in `src/vylaris/README.md`, section 5.
@@ -322,7 +328,8 @@ Still open:
    "Update Now" (and the automatic update toggle) when `VYLARIS_UPDATES` is `yes`. The legacy upstream
    scripts keep their kill switch.
 7. The `hestia` package `postinst` runs the upgrade scripts (`func/upgrade.sh`) and the system health
-   check (`func/syshealth.sh`), so key migrations ship with the package.
+   check (`func/syshealth.sh`), so key migrations ship with the package. What an update changes and what it
+   keeps is listed in section 15.
 8. Rollout order for a new version: staging suite, one test server, promote. The last three builds are kept
    in `archive/` so that a rollback is possible (`src/vylaris/README.md`, section 7).
 9. **Stage-1 trade-off: the other three packages.** `v-update-sys-vylaris` moves `hestia` only. The
@@ -529,6 +536,9 @@ Verified in the sandbox, with throw-away keys and no network host of the owner:
   `1.10.5-100+ubuntu24.04` from the own repository. The installers' refusal without a package source was
   run. More detailed checks (four distributions, pins, https with basic auth) are in `src/vylaris/README.md`.
 - The workflow file parses as YAML and passes `actionlint`.
+- The unit tests of `test/vylaris-upgrade-unit/` (`run-in-docker.sh`, Ubuntu 24.04 container, repository
+  mounted read-only): version steps (17 checks), `hestia.conf` rewrite (4), postinst guard (6), download
+  helpers with a stubbed `wget` (27); all passed. Details and limits: section 15.
 - The hardened trust and pin behaviour, with throw-away keys and loopback test repositories: the pin
   file written by `client-setup.sh --root` selects the own host and blocks the upstream stand-in and a
   third repository that claims `Origin: VylarisSpace` (apt 2.8.4, unsigned test repositories); the
@@ -540,6 +550,9 @@ Verified in the sandbox, with throw-away keys and no network host of the owner:
 
 Not verified:
 
+- The upgrade harness `test/vylaris-upgrade/` after the changes of section 15, a real dpkg upgrade with the
+  new postinst, and the package guard on Debian 13, Ubuntu 26.04, arm64 and with `unattended-upgrades`
+  (section 15.6, 15.4).
 - A real run of the GitHub Actions workflow (runner image, action versions, SSH publish to a real host).
 - A complete installation of the package on a server (installer end to end) and the web update button.
 - `iconv` and `xmlwriter` in the upstream `hestia-php`, builds for other suites and for arm64, and
@@ -583,6 +596,8 @@ Effort is a rough guess for one person who knows the build scripts.
 - [x] Public IP lookup is a neutral third party (`api.ipify.org`)
 - [ ] Replace `install/deb/deb_signing.key` with the new public key (0.5 hour, after the key exists)
 - [ ] Ship the repository keyring inside the `hestia` package for key renewals (0.5 day)
+- [ ] Bump `Version:` in `src/deb/hestia/control` to 1.10.6 or remove `install/upgrade/versions/1.10.6.sh` (the CI version check only prints a notice until then, section 15.5)
+- [ ] Decide about the package rename (section 15.4) and about gating the Cloudflare, phpMyAdmin and Backblaze downloads by `UPSTREAM_UPDATES`
 - [ ] Retire or re-point `src/hst_bootstrap_install.sh` and `src/lxd_compile.sh` (0.5 day)
 - [ ] Test an upgrade from a server installed with `--with-debs` to the first repository build (1 day)
 
@@ -595,3 +610,215 @@ Effort is a rough guess for one person who knows the build scripts.
 - [ ] Key rotation and token rotation runbook in operation (`src/vylaris/README.md`, section 8; 0.5 day)
 - [ ] Rollback drill (`repo-publish.sh --rollback`, keeping three builds) (0.5 day)
 - [ ] Stage 2: build and publish `hestia-nginx`, `hestia-php`, `hestia-web-terminal` (section 13)
+
+## 15. What an update touches
+
+An update installs a newer `hestia` package (own channel `v-update-sys-vylaris`, the Updates page, `apt-get` or
+`dpkg -i`). dpkg unpacks `bin`, `func`, `install` and `web` under `/usr/local/hestia` (the package has no
+conffiles), then runs `src/deb/hestia/preinst` and `src/deb/hestia/postinst`. The postinst sources
+`func/upgrade.sh`: backup, `syshealth_repair_system_config`, the version steps, template refresh (only if a
+flag is `true`), file manager, SnappyMail, Roundcube, dependencies, Cloudflare IP list, phpMyAdmin,
+phpPgAdmin, Backblaze tool, set `VERSION`, rebuild users (only if a step asked for it), restart services,
+then the hooks. The postinst runs only for `configure`; a call with `abort-upgrade`, `abort-remove` or
+another action exits at once.
+
+How this section was checked: by reading the code, by the harness `test/vylaris-upgrade/` (real installer in
+a Docker container, update `1.10.5-100` to `1.10.5-101` through `v-update-sys-vylaris install`, before and
+after snapshots) and by the unit tests in `test/vylaris-upgrade-unit/`. Statements that rest on code
+reading only are marked "(code)". The limits are in [15.6](#156-known-limits).
+
+### 15.1 Preserved on every update
+
+| What                                                                                                       | Where                                                                                     | Note                                                                                                                                                                                   |
+| ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `hestia.conf` values: `APP_NAME`, `THEME`, `HIDE_DOCS`, `UPSTREAM_UPDATES`, `VYLARIS_UPDATES`, custom keys | `/usr/local/hestia/conf/hestia.conf`                                                      | A key is added only when it is missing. `APP_NAME` is replaced only when it is exactly `Hestia Control Panel`. In the harness all 75 keys were identical after the update.             |
+| Users, templates, packages, SSL certificates, firewall, cron, backups settings                             | `/usr/local/hestia/data/`, `ssl/`                                                         | Not part of the package. Templates: see 15.3 for the refresh flags.                                                                                                                    |
+| Customer files, mail, databases, DKIM keys                                                                 | `/home`, `data/users`                                                                     | Database rows, the mail file and the site files were identical after the harness update. A rebuild (15.3) regenerates configuration around them.                                       |
+| Custom themes, scripts and whitelabel sources                                                              | `web/css/themes/custom`, `web/js/custom_scripts`, `web/images/custom`                     | dpkg leaves files it does not own. `web/js/custom_scripts/README.txt` is shipped and replaced. A custom theme with the name of a shipped theme is shadowed by the shipped file (code). |
+| Whitelabel copies of the logos and the favicon                                                             | `web/images/logo*.svg`, `logo.png`, `favicon.png`, `web/favicon.ico`                      | dpkg overwrites the copies, the postinst copies them again from `web/images/custom`, now as the first step after the version steps (local files only).                                 |
+| Local overrides and hooks                                                                                  | `/etc/hestiacp/local.conf`, `/etc/hestiacp/hooks/pre_install.sh`, `post_install.sh`       | The hooks run before and after the upgrade procedure.                                                                                                                                  |
+| apt pins, source list, keyring and credentials of the own repository                                       | `/etc/apt/preferences.d/vylarisspace`, `sources.list.d/vylarisspace.list`, `auth.conf.d/` | No script of the package writes them (grep over `bin`, `func`, `install`, `src/deb`). Identical before and after in the harness.                                                       |
+
+Values that contain `#` are kept. The duplicate-key repair of `func/syshealth.sh` used to cut a value at `#`
+(`SERVER_SMTP_PASSWD='pa#ss'` became `'pa'`); it is now `syshealth_normalize_config_file`, which keeps
+values byte for byte, merges duplicated keys (the last value wins) and passes comment lines through
+(`test/vylaris-upgrade-unit/hestia-conf-normalize.sh`, 4 checks).
+
+The whitelabel logos have a separate limit: the panel templates reference `/images/vylaris/*` directly
+(`web/templates/includes/css.php`, `panel.php`), so files in `web/images/custom` do not change what the panel
+pages show today. They are preserved, but not used there.
+
+### 15.2 Replaced by every update
+
+- **Every file the package owns**: branding assets (`web/images/vylaris`, logos, favicon, fonts), all themes
+  including `vylaris` and `vylaris-dark`, the panel templates (`web/templates`), `bin/*`, `func/*`,
+  `install/*` (including `install/deb` templates), `web/inc/vendor` and `web/src/vendor`. An edit of such a
+  file is lost without a prompt, a deleted shipped file comes back, files that the new version no longer
+  ships are removed, and owner and mode are reset to `root:root` 0755/0644. The package has no conffiles on
+  purpose.
+- **Therefore customisations belong in the locations of 15.1**: `web/css/themes/custom`,
+  `web/js/custom_scripts`, `web/images/custom`, templates under a new name in `data/templates` (15.3),
+  `/etc/hestiacp/local.conf` and the hooks.
+- **Saved copy of modified shipped files.** The preinst of the new package runs
+  `vylaris_save_modified_files` for `upgrade` and `install`. It runs `dpkg --verify hestia` against the
+  still installed version, leaves out what is rewritten anyway (the whitelabel copies, the two `vendor`
+  folders, `bin/v-update-quotas-after-reboot.sh`) and, if something is left, creates
+  `/root/hst_backups/modified-shipped-files-DDMMYYYYHHMMSS/` (mode 700) with `dpkg-verify.txt` and a copy of
+  each file whose content changed, with its path. Limits: 1 MiB per file, 20 MiB in total, 500 files, at
+  least 200 MB free; what is skipped is listed in `skipped.txt`. One line with the directory is printed only
+  when something was found. Every command is guarded, so a failure never stops the installation (tested:
+  `/root/hst_backups` as a regular file, `dpkg -i` still exited 0). It sees content changes and deleted
+  files, not changes of mode or owner (observed with dpkg 1.22.6). It is skipped on a server without
+  `/usr/local/hestia/data/users/admin`, because the preinst returns before it (code).
+- **The older backup** `/root/hst_backups/<date>/` (`upgrade_start_backup`) holds packages, templates,
+  `hestia.conf` and service configuration. It does not hold `bin`, `func`, `web`, the custom folders or
+  `/etc/apt`. The way back for the panel code is the previous deb in the repository archive (the last three
+  builds, `repo-publish.sh --rollback`).
+
+### 15.3 What an update still does by design
+
+- **Restarts services.** With `UPGRADE_RESTART_SERVICES='true'` (default in `install/upgrade/upgrade.conf`)
+  the mail, IMAP, web, proxy, DNS, PHP-FPM, FTP, fail2ban and SSH services, the web terminal and the
+  panel are restarted at the end (those that are installed). Expect short interruptions; update in a maintenance window.
+- **Cloudflare IP list.** On every update on a server with nginx, `upgrade_cloudflare_ip` asks
+  `api.cloudflare.com` (third party, not the upstream project, not gated by `UPSTREAM_UPDATES`) and replaces
+  `/etc/nginx/conf.d/cloudflare.inc` as a whole. In the harness with an open network a line added to that
+  file was lost; with the network closed the file stayed. Keep your own `real_ip_from` lines in another
+  include. The file is now written to a temporary file first and replaces the old one only if it contains at
+  least one `set_real_ip_from` line (not covered by a test).
+- **Downloads of third-party components** when the version in `install/upgrade/upgrade.conf` is newer than
+  the installed one: phpMyAdmin (`files.phpmyadmin.net`), phpPgAdmin (a GitHub project of the upstream
+  authors, gated by `UPSTREAM_UPDATES`), the Backblaze CLI tool, the file manager, SnappyMail and Roundcube.
+  There is no download when the installed version matches. phpMyAdmin, phpPgAdmin and the Backblaze tool now
+  download and check into a temporary place first and keep the installed version when the download fails
+  (`test/vylaris-upgrade-unit/upgrade-downloads.sh`, 27 checks, `wget` replaced by a stub, so no real
+  download was tested). The file manager, SnappyMail and Roundcube are installed by `bin/v-add-sys-*`
+  scripts, which were not changed (15.6). phpMyAdmin, the Backblaze tool and the Cloudflare list are not
+  gated by `UPSTREAM_UPDATES`; whether they should be is an owner decision. Apart from the tar integrity and
+  the ELF header of the Backblaze binary, nothing verifies a checksum or signature.
+- **Version steps and the rebuild.** `func/upgrade.sh` runs the scripts in `install/upgrade/versions/` that
+  are newer than the recorded `VERSION` and not newer than the base version of the installed package
+  (`upgrade_base_version`: `1.10.5-101+ubuntu24.04` is `1.10.5`). An own revision (`-101`, `-102`, ...) runs
+  no step. A step runs once when the base version reaches it; `VERSION` in `hestia.conf` is then set to it.
+  `UPGRADE_REBUILD_USERS='true'`, which most step scripts set, therefore happens on a real version bump only
+  (`test/vylaris-upgrade-unit/upgrade-steps.sh`, 17 checks, for example "1.10.5 -> revision bump 1.10.5-101
+  runs nothing" and "1.10.5 -> package 1.10.6 runs 1.10.6 once"). The step of the installed version is run
+  again only when a `~alpha` or `~beta` build is involved, as upstream does for development snapshots.
+  `VERSION` is set to the base version and `RELEASE_BRANCH` to `release` (unless the version has `~alpha` or
+  `~beta`) on every update.
+- **What a rebuild does.** It regenerates the nginx and Apache vhosts, PHP-FPM pools, DNS zones and mail
+  domain configuration of every user from the templates. Hand edits of generated files are lost; the
+  include files `nginx.conf_*` and `*.conf_htaccess` stay (code). It recreates `document_errors` of every
+  web domain unless `POLICY_SYNC_ERROR_DOCUMENTS='no'`, which removes custom error pages (code). Seen in the
+  harness (that run rebuilt on every update, before the version cap existed): the `webmail` DNS record of a
+  domain changed from CNAME to A with a higher SOA serial, 17 directory, cron and log-link permission
+  changes, and 36 generated files rewritten with identical content. The step scripts also change other
+  things (the 1.10.6 step edits the exim and ProFTPD configuration, replaces the phpMyAdmin configuration and
+  writes `60unattended-upgrades-*` files for third-party repositories); read them before a merge.
+- **Template refresh flags.** `UPGRADE_UPDATE_WEB_TEMPLATES`, `UPGRADE_UPDATE_MAIL_TEMPLATES` and
+  `UPGRADE_UPDATE_DNS_TEMPLATES` are `false` in `install/upgrade/upgrade.conf`. A step script can set one to
+  `true` (several older steps do). Then the default templates are copied over templates of the same name in
+  `data/templates`, and with `POLICY_SYNC_SKELETON` other than `no` the skeleton, suspend and unassigned pages
+  are removed first. A copy goes to `/root/hst_backups/<date>/templates`. Templates with other names are not
+  touched: **copy a default template to a new name before you edit it.**
+- **`v-repair-sys-config restore` is dangerous.** The update never calls it. It replaces `hestia.conf` with
+  the snapshot from the installation (`conf/defaults/hestia.conf`), so every later change (theme, SMTP,
+  policy) is lost and `VERSION` goes back, which makes old version steps run again. Check `APP_NAME`,
+  `UPSTREAM_UPDATES` and `VYLARIS_UPDATES` afterwards (the restore re-applies only these three migrations).
+- **Failures do not fail the update.** The postinst ends with exit 0 and each helper runs in a pipe to
+  `tee`, so a failed step is reported in the output and the package still counts as installed.
+- **Network of an update.** In the harness with the network closed to everything but the repository the
+  update contacted the repository and tried `api.cloudflare.com`. With an open network it also reached
+  `api.cloudflare.com` and, through the restart of the Sury PHP-FPM build, `telemetry.sury.org`.
+
+### 15.4 The package guard
+
+Purpose: a `hestia` package that does not come from this fork (for example the upstream package) must not
+replace the installed one. It would remove the VylarisSpace themes, logos, fonts and the update scripts and
+bring back the upstream interface. `hestia.conf`, the data and the custom folders would stay. The apt pins
+(section 2) do not stop `dpkg -i`, `apt-get install ./file.deb` or `apt-get install hestia=VERSION`.
+
+| Part                                                | What it does                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Marker `Vylaris-Edition: VylarisSpace`              | Field in `src/deb/hestia/control`. `src/hst_autocompile.sh` stops if it is missing, the CI step "Check the package guard" checks it in the built deb, and `repo-publish.sh` refuses to publish or promote a `hestia` deb without it (exit 2; `--rollback` only warns).                                                                                                                                                                                                        |
+| `prerm` of the installed package (dpkg -i)          | dpkg calls `prerm upgrade NEWVERSION` of the installed package before it unpacks the new one. The script reads `/var/lib/dpkg/tmp.ci/control` of the new package and exits 1 without the marker; dpkg stops and the installed files stay. `remove`, `purge`, `deconfigure`, `failed-upgrade` and `abort-*` pass.                                                                                                                                                              |
+| apt hook `/etc/apt/apt.conf.d/90vylarisspace-guard` | `DPkg::Pre-Install-Pkgs` calls `bin/v-check-package-source`, which reads the control data of every `.deb` that apt is about to install and exits 1 for a package named `hestia` without the marker. It covers `apt-get install ./foreign.deb` and `apt-get install hestia=VERSION`. It blocks only on that deliberate exit code 1: a missing, broken or non-executable checker lets apt continue, so a defect in the checker can never block the installation of its own fix. |
+| Override                                            | `touch /etc/hestiacp/allow-foreign-hestia` (a regular file; it is removed again when the next VylarisSpace package is configured), `VYLARIS_ALLOW_FOREIGN_HESTIA=yes` for one command (`no` does not override), or `UPSTREAM_UPDATES='yes'` in `hestia.conf` (the admin asked for upstream packages).                                                                                                                                                                         |
+
+The hook file, the checker and the prerm belong to the package, so they are removed with it.
+
+What was tested (`test/vylaris-guard/run.sh` in Docker on Ubuntu 24.04, Ubuntu 22.04 and Debian 12, 66 checks
+each, none failed, reported by the person who wrote it; not re-run for this section): the stand-in packages
+are the own deb repacked without the marker, with and without its own prerm, so they are not the real
+upstream deb. The checks cover `dpkg -i`, `apt-get install ./file`, `apt-get install hestia=VERSION` from a
+test repository, each layer alone, the override file and variable, file names with spaces and a leading dash,
+and own upgrades and downgrades (which pass).
+
+Caveats:
+
+1. **Rollout.** A server still on a build without the prerm and the hook is not protected. The guard starts
+   when the first guarded build is installed. Until then only the pins and the installer refusals apply.
+2. **Older builds have no marker.** A server with the guard refuses a downgrade to such a build, also through
+   `repo-publish.sh --rollback`, until `/etc/hestiacp/allow-foreign-hestia` exists.
+3. **One bypass.** dpkg runs `failed-upgrade` of the new package after the old prerm failed. A foreign
+   package that ships its own prerm exiting 0 therefore gets through `dpkg -i` (shown with a stand-in). The
+   apt hook still stops it on the apt paths. The upstream package that was inspected has only a preinst and
+   a postinst. This cannot be fixed from the installed prerm.
+4. **The foreign preinst runs once.** dpkg runs the new package's preinst before the old prerm. A refused
+   package therefore runs its own preinst. The upstream preinst only creates two files if they are missing.
+5. **Not tested** with `unattended-upgrades`, `aptitude` or `apt-get dist-upgrade`, with Debian 13 and
+   Ubuntu 26.04, or on arm64.
+6. **`apt-get remove hestia`** is not blocked. `hestia-nginx`, `hestia-php` and `hestia-web-terminal` depend
+   on `hestia` and are removed with it (shown with stand-in packages); data and settings stay.
+7. **Recovery after a foreign package got through** (override set, or no guard yet): the guard files were
+   removed with the package. With the pin file in place, `apt-get install --allow-downgrades hestia` installs
+   the own version again; the alternative is `dpkg -i` of the own deb. Settings were unchanged in that test
+   (a stand-in made from the upstream 1.10.5 deb with version 1.10.6-1). Then check the autoupdate cron
+   entry (`v-add-cron-vylaris-autoupdate`).
+
+**Owner decision: rename the package.** A package `vylarisspace` with `Provides`, `Conflicts` and `Replaces`
+for `hestia` plus `Protected: yes` was the only block that does not depend on scripts: dpkg refused a real
+`hestia`, and with `Protected: yes` apt refused too (apt 2.4, 2.6 and 2.8 tested with stand-ins). The cost is
+about 80 references to the package name (installers, `client-setup.sh`, pins, `v-update-sys-vylaris`,
+`func/upgrade.sh`, `repo-publish.sh`, `hst_autocompile.sh`, CI) and more merge conflicts with upstream. An
+epoch and a separate guard package were tried and are ineffective. Nothing of this is implemented.
+
+### 15.5 Checklist before a release that merges an upstream version
+
+1. Raise `Version:` in `src/deb/hestia/control` to the merged version **in the same merge**, and keep the
+   `Vylaris-Edition` line (the merge of `control` conflicts). A step script above the package base version
+   never runs. `test/vylaris-guard/check-version-steps.sh` (first step of the CI job) prints a NOTICE when a
+   script in `install/upgrade/versions/` is newer than `Version:` (it fails with `--strict`; use that for release builds).
+2. Read the new `install/upgrade/versions/X.sh`: the `UPGRADE_UPDATE_*_TEMPLATES` and `UPGRADE_REBUILD_USERS`
+   flags, edits of files under `/etc`, writes to apt sources and keyrings, and downloads from upstream hosts
+   (`UPSTREAM_UPDATES` must still be honoured, section 9). On every server this step runs once, with the
+   rebuild and the restarts of 15.3. Announce a maintenance window.
+3. Compare `install/upgrade/upgrade.conf` (`pma_v`, `pga_v`, `b2_v`, `fm_v`, `sm_v`, `rc_v`): a higher
+   version is a download on every server.
+4. Run `test/vylaris-upgrade/run.sh` (Docker, about 11 minutes, exit 0 expected) and
+   `test/vylaris-upgrade-unit/run-in-docker.sh`. Run `test/vylaris-guard/run.sh` with two built debs.
+   The harness updates between two revisions of the same base version, so it does not exercise a version
+   bump; test the bump on a staging server with real data as well.
+5. Build with `--pkgrev 100`, check that `dpkg-deb -f` shows `Vylaris-Edition`, publish to staging, update one
+   test server, promote.
+
+### 15.6 Known limits
+
+- The harness `test/vylaris-upgrade/` was not re-run after the changes described here, so the effect of the
+  version cap on a real install is covered by the unit test only. The new postinst was not run through a real
+  dpkg upgrade; only the preinst was (real dpkg upgrades with a stand-in package built from the real deb).
+- The harness installs nginx, PHP-FPM, MariaDB, Exim, Dovecot, BIND, iptables and the API on Ubuntu 24.04.
+  Apache, multiple PHP versions, FTP, ClamAV, SpamAssassin, fail2ban, PostgreSQL, Let's Encrypt and other
+  distributions or architectures were not part of it.
+- Not changed, found while checking (all in `bin/`, outside the files of this work): `upgrade_filemanager`
+  runs `v-delete-sys-filemanager` before the new download, so a failed download leaves no file manager and
+  `FILE_MANAGER='false'`; `v-add-sys-snappymail` and `v-add-sys-roundcube` may remove the old webmail before
+  the new one is in place; `upgrade_dependencies` is not guarded (skipped while the bundled `vendor` is
+  complete).
+- The Cloudflare, phpMyAdmin and Backblaze downloads are not gated by `UPSTREAM_UPDATES` and have no
+  checksum check.
+- Stage 1: the unpinned upstream `hestia-nginx` package replaces `/usr/local/hestia/nginx/conf/nginx.conf`
+  when upstream publishes a new version. Its own backup of that file fails (reproduced with the upstream
+  preinst), so keep your own copy of edits.
+- Until the owner bumps `Version:` the CI version check prints a notice on the current tree: `1.10.6.sh` is present and
+  `src/deb/hestia/control` says 1.10.5. The step stays dormant meanwhile (the upgrade code caps the steps at the package version).
